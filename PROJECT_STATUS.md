@@ -1,7 +1,24 @@
 # Pivka v2 — Project Status
 
 ## Current checkpoint
-Phase 0 audit completed. Development branch: `pivka-v2`. The production `main` branch has not been changed.
+Phase 0 audit completed. Phase 1 foundation has started on `pivka-v2`. The production `main` branch has not been changed.
+
+## Phase 1 work completed so far
+- Added Supabase/PostgreSQL foundation migration.
+- Added roles: OWNER / ADMIN / STAFF / DRIVER.
+- Added categories, products/SKUs, customers, addresses, orders, order items and order status history.
+- Added inventory movement ledger and expiring stock reservations.
+- Added order price/cost snapshots for historical profitability.
+- Added RLS foundation and staff access policies.
+- Added placeholder seed categories including strong alcohol; no ice category.
+- Added configurable draft beer quantity fields; placeholder draft SKU starts at 2 L minimum.
+- Added browser data adapter (`js/db.js`) and safe public config template; no secrets committed.
+- Added first protected-admin shell/login screen (`admin/index.html`).
+
+## Phase 1 blocked/configuration needed
+- A Supabase project must be created/selected and its public URL + anon/publishable key supplied before the database-backed UI can run.
+- An OWNER auth user/profile must then be created.
+- Real assortment/economics remain pending; placeholder seed values are explicitly marked.
 
 ## Existing implementation found
 - Static single-page application.
@@ -55,7 +72,7 @@ Phase 0 audit completed. Development branch: `pivka-v2`. The production `main` b
 
 ## Implementation plan
 - [x] Phase 0 — audit current repository
-- [ ] Phase 1 — foundation: backend/database, products, categories, inventory, customers, orders, statuses, admin base
+- [~] Phase 1 — foundation: schema/data layer/admin shell created; needs Supabase project connection, owner bootstrap, order RPC/transaction logic and admin CRUD screens
 - [ ] Phase 2 — sales experience: new homepage order, gift progress, Рывки, TOP, catalog, contextual upsell, cart
 - [ ] Phase 3 — commercial engine: bundle builder, promotion mechanics, gift tiers, PASS, repeat order, product requests
 - [ ] Phase 4 — social: beer bet, treat a friend, share links, payment-ready flows
