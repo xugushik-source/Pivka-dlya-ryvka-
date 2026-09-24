@@ -27,4 +27,6 @@ async function toggleBundle(id,active){const r=await c().from('bundles').update(
 async function newProduct(){newProductBox.classList.toggle('hidden');const r=await c().from('categories').select('id,name').order('sort_order');npCat.innerHTML=(r.data||[]).map(x=>'<option value="'+x.id+'">'+x.name+'</option>').join('')}
 async function createProduct(){if(!npName.value.trim()||!npSku.value.trim()){alert('Нужно название и SKU');return}const r=await c().from('products').insert({name:npName.value.trim(),sku:npSku.value.trim(),category_id:npCat.value||null,sale_price:+npPrice.value||0,purchase_price:+npCost.value||0,stock_quantity:+npStock.value||0,unit:'piece',minimum_quantity:1,quantity_step:1,active:true});if(r.error)alert(r.error.message);else{newProductBox.classList.add('hidden');loadProducts()}}
 c().auth.onAuthStateChange((e,s)=>{if(s?.user)start()});start();
+</script><script>
+async function loadDemand(){try{const {data,error}=await supabase.from('product_requests').select('*').order('created_at',{ascending:false}).limit(100);if(error)throw error;console.table(data)}catch(e){console.warn('Demand requests',e.message)}}
 </script></body></html>
