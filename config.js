@@ -1,0 +1,1 @@
+window.PIVKA_CONFIG={supabaseUrl:'https://uphnuzgaildmjrttmbaq.supabase.co',supabaseAnonKey:'sb_publishable_ta7YiO7MqJ0aDD0H7POAOg_2asMiUg2',whatsapp:'995579145634'};
