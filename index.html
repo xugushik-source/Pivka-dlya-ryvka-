@@ -55,13 +55,13 @@ document.querySelectorAll('.cats .chip').forEach((x,i)=>{const emo=x.textContent
 const nf=[...document.querySelectorAll('section.card b')].find(x=>['Не нашли товар?','ვერ იპოვე პროდუქტი?','Չգտա՞ք ապրանքը'].includes(x.textContent));if(nf){nf.textContent=t.notfound;nf.closest('.row').querySelector('button').textContent=t.tell}
 const rep=[...document.querySelectorAll('section.card b')].find(x=>x.textContent.includes('Повторить прошлый')||x.textContent.includes('გაიმეორე წინა')||x.textContent.includes('Կրկնել նախորդ'));if(rep){rep.textContent=t.repeat;rep.closest('.row').querySelector('button').textContent=t.repeatBtn}
 const cityCard=[...document.querySelectorAll('section.card b')].find(x=>x.textContent.includes('Город доставки')||x.textContent.includes('მიწოდების ქალაქი')||x.textContent.includes('Առաքման քաղաք'));if(cityCard)cityCard.textContent=t.city;
-if(!Object.keys(cart||{}).length&&!checkoutBundle)cartCount.textContent='🛒 '+t.cart;
+if((typeof cart==='undefined'||!Object.keys(cart).length)&&(typeof checkoutBundle==='undefined'||!checkoutBundle))cartCount.textContent='🛒 '+t.cart;
 const clr=[...document.querySelectorAll('#cartOverlay button')].find(x=>x.textContent.includes('Очистить')||x.textContent.includes('გასუფთავება')||x.textContent.includes('Մաքրել'));if(clr)clr.textContent=t.clear;
 const ord=document.querySelector('#cartOverlay .orderGreen');if(ord)ord.textContent=t.checkout;
-if(deliveryBtn)deliveryBtn.textContent=t.delivery;if(pickupBtn)pickupBtn.textContent=t.pickup;if(submitOrder)submitOrder.textContent=t.confirm;
-if(coName)coName.placeholder=t.name;if(coPhone)coPhone.placeholder=t.phone;if(coAddress)coAddress.placeholder=t.address;if(coComment)coComment.placeholder=t.comment;
-const ageLabel=coAge?.parentElement?.querySelector('span');if(ageLabel)ageLabel.textContent=t.age;
+const db=document.getElementById('deliveryBtn'),pb=document.getElementById('pickupBtn'),so=document.getElementById('submitOrder');if(db)db.textContent=t.delivery;if(pb)pb.textContent=t.pickup;if(so)so.textContent=t.confirm;
+const cn=document.getElementById('coName'),cp=document.getElementById('coPhone'),ca=document.getElementById('coAddress'),cc=document.getElementById('coComment'),age=document.getElementById('coAge');if(cn)cn.placeholder=t.name;if(cp)cp.placeholder=t.phone;if(ca)ca.placeholder=t.address;if(cc)cc.placeholder=t.comment;
+const ageLabel=age?.parentElement?.querySelector('span');if(ageLabel)ageLabel.textContent=t.age;
 const done=document.querySelector('#upsellCategoryBar button');if(done)done.textContent=t.done;
 }
-setTimeout(()=>setLang(localStorage.getItem('pivka_lang')||'ru'),0);
+document.addEventListener('DOMContentLoaded',()=>setLang(localStorage.getItem('pivka_lang')||'ru'));
 </script></body></html>
