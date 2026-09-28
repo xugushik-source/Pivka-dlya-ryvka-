@@ -19,5 +19,6 @@
   });
   const setLang = window.setLang;
   window.setLang = function(lang) { setLang(lang); update(); };
+  document.addEventListener('DOMContentLoaded', update);
   update();
 })();

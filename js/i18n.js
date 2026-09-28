@@ -93,13 +93,14 @@ function translateAttributes(el) {
   for (const attr of ['placeholder','aria-label','title']) {
     const current = el.getAttribute(attr);
     if (!current) continue;
-    const key = 'i18nSource'+attr;
+    const suffix = attr.replace(/-([a-z])/g, (_,letter) => letter.toUpperCase());
+    const key = 'i18nSource'+suffix;
     let source = el.dataset[key];
-    const previous = el.dataset['i18nRendered'+attr];
+    const previous = el.dataset['i18nRendered'+suffix];
     if (!source || current !== previous) source = reverse.get(current) || current;
     const translated = localized(source, language);
     el.dataset[key] = source;
-    el.dataset['i18nRendered'+attr] = translated;
+    el.dataset['i18nRendered'+suffix] = translated;
     if (current !== translated) el.setAttribute(attr, translated);
   }
 }
