@@ -84,3 +84,13 @@ Real assortment, purchase prices, selling prices, opening stock, delivery pricin
 
 ## Handoff rule
 Before continuing, read `MASTER_SPEC.md` and this file. Continue from the first incomplete phase. Do not rewrite verified completed phases without a concrete reason. Update this file after each completed checkpoint.
+
+## Checkpoint 2026-09-28 — Рывки, подарки, Кери, фото, шторка
+- Рывки считаются динамически (`private.bundle_calc`): обычная стоимость = Σ sale_price × qty (с учётом цены города), цена = обычная − скидка (`bundles.discount_type` FIXED/PERCENT, `discount_value`). `bundles.price`/`compare_at_price` — legacy, новым кодом не читаются (сейчас там переходное зеркало для старой сборки на main).
+- Себестоимость/маржа рывка = Σ purchase_price × qty; статус OK / LOW_MARGIN (`min_margin_percent`) / BELOW_COST. Розница никогда не меняется автоматически; `block_below_cost` — ручной выключатель владельца.
+- Рывок недоступен, если компонент удалён/выключен/не в городе/нет остатка (только для OWN_STOCK). Замены не подставляются.
+- `create_bundle_order(..., p_city, p_items)` создаёт ОДИН заказ: рывок + доп. товары, один подарок на всю корзину; строки поставщикам.
+- Подарки: 60 ₾ → DAV-FISH-STR-030, 100 ₾ → DAV-FISH-SIG-001; выдаётся только самый высокий достигнутый уровень.
+- Локализация названий товаров: `products.name_i18n` {ka, hy}; `products.name` — RU. Редактируется в админке (Товары).
+- Шторка первого экрана: `js/intro.js` + `assets/hero/intro.css` (hold 3000 / reveal 1000, reduced motion 200/250).
+- Миграции: `supabase/migrations/20260928_*.sql` (применены в проекте uphnuzgaildmjrttmbaq).
