@@ -7,10 +7,10 @@ update public.products
    set name = 'Кери', name_i18n = '{"ru":"Кери","ka":"ქერი","hy":"Քեռի"}'::jsonb, updated_at = now()
  where sku = 'DAV-BEER-001';
 
--- 2. Beer photos were re-uploaded (previous files were truncated); version the URL so no cached copy is reused.
+-- 2. All five draft beer photos replaced with the owner's round labels (four previous files were truncated); version the URL so no cached copy is reused.
 update public.products
-   set image_url = split_part(image_url, '?', 1) || '?v=20260928', updated_at = now()
- where sku in ('DAV-BEER-001','DAV-BEER-002','DAV-BEER-003','DAV-BEER-004')
+   set image_url = split_part(image_url, '?', 1) || '?v=20260928b', updated_at = now()
+ where sku in ('DAV-BEER-001','DAV-BEER-002','DAV-BEER-003','DAV-BEER-004','DAV-BEER-005')
    and image_url like '%/assets/products/%-draft.jpg%';
 
 -- 3. Рывки: live price = Σ sale_price × qty − fixed discount.
