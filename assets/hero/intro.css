@@ -17,7 +17,7 @@
 /* Curtain (splash) — only when JS runs; without JS the intro stays a normal first section.
    Phases like the Marianna project: hold → revealing (whole curtain slides up) → done (removed). */
 :root{--intro-hold:3000ms;--intro-reveal:1000ms}
-.js .brand-intro{position:fixed;inset:0;z-index:100;height:auto;transform:translate3d(0,0,0);transition:transform var(--intro-reveal) cubic-bezier(.76,0,.24,1);animation:intro-failsafe 0s 14s forwards}
+.js .brand-intro{position:fixed;inset:0;z-index:100;height:auto;transform:translate3d(0,0,0);transition:transform var(--intro-reveal) cubic-bezier(.76,0,.24,1);animation:intro-failsafe 0s 40s forwards}
 .js .brand-intro.is-revealing{transform:translate3d(0,-100%,0);pointer-events:none}
 .js .brand-intro.is-done{display:none}
 .js .brand-intro__exit{transition:opacity calc(var(--intro-reveal)*.6) cubic-bezier(.16,1,.3,1),transform calc(var(--intro-reveal)*.6) cubic-bezier(.16,1,.3,1)}
@@ -67,15 +67,19 @@ html.intro-short .brand-intro .mask>span,html.intro-short .brand-intro .stage{an
   .js .app .reveal:not(.in) .tile,.js .app .reveal:not(.in) .card.bundle,.js .app.pre-enter .card.bundle{opacity:1;transform:none}
 }
 
-/* Readable story: logo (0–1 s) → «Не думай, что брать» (~3 s on screen) → «Угости друга • Спорим на пиво?» (~3 s) → shop opens. */
-.intro-msgs{position:relative;min-height:5.4em;margin:6px 0 20px;max-width:24em}
-.intro-msg{position:absolute;left:0;right:0;top:0;margin:0;font-size:clamp(18px,4.8vw,26px);line-height:1.25;color:#efe9dd;opacity:0}
-.intro-msg b{display:block;color:#fff;font-weight:1000;font-size:1.08em}
-.intro-msg.m1{animation:msg-life 3.4s 1s both}
-.intro-msg.m2{animation:msg-in .55s 4.4s both}
-@keyframes msg-life{0%{opacity:0;transform:translate3d(0,16px,0)}15%{opacity:1;transform:none}88%{opacity:1;transform:none}100%{opacity:0;transform:translate3d(0,-14px,0)}}
-@keyframes msg-in{from{opacity:0;transform:translate3d(0,16px,0)}to{opacity:1;transform:none}}
-html.intro-short .intro-msg.m1{display:none}
-html.intro-short .intro-msg.m2{animation-duration:.25s;animation-delay:0s}
-@media(prefers-reduced-motion:reduce){.intro-msg.m1{display:none}.intro-msg.m2{animation:none;opacity:1}}
-@media(max-height:580px){.intro-msgs{min-height:4.6em;margin-bottom:10px}}
+/* Credits: one phrase at a time rolls up in the middle of the screen; language chips on top; skip button below. */
+.brand-intro__content{position:relative;display:flex;flex-direction:column;min-height:100svh;min-height:100vh;padding-top:calc(16px + env(safe-area-inset-top))}
+.intro-langs{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+.intro-langs button{appearance:none;border:1px solid #ffffff55;background:#0008;color:#fff;border-radius:30px;padding:9px 14px;font-size:15px;font-weight:800;min-height:42px;cursor:pointer}
+.intro-langs button.on{background:#ffb51b;color:#171000;border-color:#ffb51b}
+.credits{position:relative;flex:1;min-height:240px;overflow:hidden}
+.credit{position:absolute;left:0;right:0;padding:0 4px;white-space:normal;top:50%;margin:0;transform:translate3d(0,-50%,0);text-align:center;font-weight:1000;font-size:clamp(30px,8.6vw,60px);line-height:1.08;letter-spacing:-.02em;text-shadow:0 4px 30px #000c;transition:transform .6s cubic-bezier(.16,1,.3,1),opacity .5s ease}
+.credit.in{opacity:0;transform:translate3d(0,calc(-50% + 46px),0)}
+.credit.out{opacity:0;transform:translate3d(0,calc(-50% - 46px),0)}
+.credit.brand{font-size:clamp(52px,14vw,110px);line-height:.9}
+.credit.brand span{display:block}.credit.brand span+span{color:#ffba26}
+.credit .sub{display:block;margin-top:.35em;font-size:.5em;font-weight:700;color:#e8e1d3;letter-spacing:0}
+.intro-bottom{padding-bottom:calc(34px + env(safe-area-inset-bottom))}
+.intro-hint{margin:0 0 10px;text-align:center;font-size:14px;color:#e8e1d3cc}
+.brand-intro__cta{width:100%}
+@media(prefers-reduced-motion:reduce){.credit{transition:opacity .2s}.credit.in,.credit.out{transform:translate3d(0,-50%,0)}}
