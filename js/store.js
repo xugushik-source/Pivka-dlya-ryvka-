@@ -38,6 +38,9 @@ const SUB_LABEL = {
   vodka: ['водка', 'არაყი', 'օղի'], whisky: ['виски', 'ვისკი', 'վիսկի'], brandy: ['коньяк', 'კონიაკი', 'կոնյակ'],
   strong: ['ликёры', 'ლიქიორები', 'լիկյորներ'], rum: ['ром', 'რომი', 'ռոմ'], gin: ['джин', 'ჯინი', 'ջին'], tequila: ['текила', 'ტეკილა', 'տեկիլա']
 };
+// Real photos for section tiles (assets/cat): scene crops from the bar photo, or real packshots on the same bar backdrop.
+const CAT_IMG = ['draft', 'strong', 'wine', 'fish', 'meat-snacks', 'cheese', 'nuts', 'chips', 'snacks', 'soft-drinks', 'energy'];
+const catImg = slug => CAT_IMG.includes(slug) ? './assets/cat/' + slug + '.jpg?v=20260930b' : '';
 const LI = () => ({ ru: 0, ka: 1, hy: 2 }[lang()] || 0);
 const tr = s => (window.PIVKA_I18N ? PIVKA_I18N.translate(s, lang()) : s);
 function catConf(slug) {
@@ -580,7 +583,8 @@ function resumeUpsell() {
   upsellSub.textContent = upsellFlow.subtitle;
   upsellList.innerHTML = targets.map(t => {
     const [ico, label] = targetLabel(t);
-    return '<button type="button" class="up" data-cat="' + t + '"><span class="emo">' + ico + '</span><b>' + esc(label) + '</b><span class="accent">Выбрать →</span></button>'
+    const img = catImg(t) || catImg(STRONG_GROUP.includes(t) ? 'strong' : '');
+    return '<button type="button" class="up' + (img ? ' photo' : '') + '" data-cat="' + t + '"' + (img ? ' style="background-image:url(\'' + img + '\')"' : '') + '>' + (img ? '' : '<span class="emo">' + ico + '</span>') + '<b>' + esc(label) + '</b><span class="accent">Выбрать →</span></button>'
   }).join('');
   upsellList.querySelectorAll('.up').forEach(b => b.onclick = () => openUpsellCategory(b.dataset.cat));
   track('upsell_view', { productId: upsellFlow.source?.id || null, metadata: { targets } });
@@ -616,7 +620,7 @@ function finishUpsellCategory() {
 // ---------- Category navigation: big tiles for the first choice, compact sticky nav afterwards.
 function renderNav() {
   const vis = CATS.filter(c => catProducts(c.slug).length);
-  const tile = c => `<button type="button" class="tile${c.slug===currentCat?' on':''}" data-cat="${c.slug}" aria-pressed="${c.slug===currentCat}"><span class="ti" aria-hidden="true">${c.ico}</span><span class="tt"><b>${c.label}</b><small>${countLabel(c.slug, catProducts(c.slug).length)}</small></span></button>`;
+  const tile = c => `<button type="button" class="tile${catImg(c.slug)?' photo':''}${c.slug===currentCat?' on':''}" data-cat="${c.slug}" aria-pressed="${c.slug===currentCat}"${catImg(c.slug)?` style="background-image:url('${catImg(c.slug)}')"`:''}>${catImg(c.slug)?'':`<span class="ti" aria-hidden="true">${c.ico}</span>`}<span class="tt"><b>${c.label}</b><small>${countLabel(c.slug, catProducts(c.slug).length)}</small></span></button>`;
   tilesAlc.innerHTML = vis.filter(c => c.grp === 'alc').map(tile).join('');
   tilesFood.innerHTML = vis.filter(c => c.grp === 'food').map(tile).join('');
   const more = vis.filter(c => c.grp === 'more');
