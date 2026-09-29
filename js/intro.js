@@ -41,10 +41,9 @@
   };
   const t = () => copy[root.lang] || copy.ru;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let seen = false;
-  try { seen = sessionStorage.getItem('pivka_intro_seen') === '1'; sessionStorage.setItem('pivka_intro_seen', '1'); } catch (e) {}
-  // Reloads in the same tab (e.g. after checkout) show only the brand and the button for a moment.
-  const short = seen;
+  // Full credits on every visit. Only the reload right after a placed order is short (store.js sets the flag).
+  let short = false;
+  try { short = sessionStorage.getItem('pivka_intro_short') === '1'; sessionStorage.removeItem('pivka_intro_short'); } catch (e) {}
   const REVEAL_MS = reduced ? 250 : 800;
   root.style.setProperty('--intro-reveal', REVEAL_MS + 'ms');
   if (short) root.classList.add('intro-short');
