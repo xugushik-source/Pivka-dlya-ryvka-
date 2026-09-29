@@ -78,7 +78,7 @@ html.intro-short .brand-intro .mask>span,html.intro-short .brand-intro .stage{an
 .credit.out{opacity:0;transform:translate3d(0,calc(-50% - 46px),0)}
 .credit.brand{font-size:clamp(52px,14vw,110px);line-height:.9}
 .credit.brand span{display:block}.credit.brand span+span{color:#ffba26}
-.credit .sub{display:block;margin-top:.35em;font-size:.5em;font-weight:700;color:#e8e1d3;letter-spacing:0}
+.credit .sub{display:block;margin:.45em auto 0;max-width:20em;font-size:.46em;font-weight:700;line-height:1.3;color:#ffe2a6;letter-spacing:0}
 .intro-bottom{padding-bottom:calc(34px + env(safe-area-inset-bottom))}
 .intro-hint{margin:0 0 10px;text-align:center;font-size:14px;color:#e8e1d3cc}
 .brand-intro__cta{width:100%}
