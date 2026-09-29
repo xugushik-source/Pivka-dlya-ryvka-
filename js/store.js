@@ -444,6 +444,27 @@ function boostAdd(id) {
   if (cartOverlay.classList.contains('on')) openCart()
 }
 
+// Several products can share one gift threshold (e.g. two Jerky at 50 ₾): show them as one level.
+function groupGiftTiers(rows) {
+  const levels = new Map();
+  (rows || []).forEach(r => {
+    const k = Number(r.threshold);
+    if (!levels.has(k)) levels.set(k, []);
+    levels.get(k).push(r)
+  });
+  const label = (r, l) => {
+    const p = r.products || {};
+    return ((p.name_i18n && p.name_i18n[l]) || p.name || '') + (Number(r.quantity) > 1 ? ' ×' + Number(r.quantity) : '')
+  };
+  return [...levels.entries()].sort((a, b) => a[0] - b[0]).map(([threshold, parts]) => ({
+    threshold,
+    products: {
+      name: parts.map(r => label(r, 'ru')).join(' + '),
+      name_i18n: Object.fromEntries(['ru', 'ka', 'hy'].map(l => [l, parts.map(r => label(r, l)).join(' + ')]))
+    }
+  }))
+}
+
 function renderGift(total) {
   const boxes = [giftBlock, cartGift].filter(Boolean);
   if (!giftTiers.length) {
@@ -990,6 +1011,7 @@ observeNav();
   track('page_view', { metadata: { lang: lang(), ref: document.referrer ? new URL(document.referrer).hostname : '' } });
   try {
     [catalog, bundleCatalog, giftTiers, upsellRules, cities, categoryRows] = await Promise.all([retry(() => PIVKA_DB.listCatalog()), PIVKA_DB.listBundles(localStorage.getItem('pivka_city')).catch(() => []), PIVKA_DB.listGiftTiers().catch(() => []), PIVKA_DB.listUpsellRules().catch(() => []), retry(() => PIVKA_DB.listCities()), PIVKA_DB.listCategories().catch(() => [])]);
+    giftTiers = groupGiftTiers(giftTiers);
     categoryRows.forEach(c => catById[c.id] = c);
     catalog.forEach(p => {
       if (p.name_i18n) nameI18n[p.id] = p.name_i18n
