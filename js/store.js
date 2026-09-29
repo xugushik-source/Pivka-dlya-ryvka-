@@ -21,18 +21,18 @@ const STRONG_GROUP = ['strong', 'vodka', 'whisky', 'brandy', 'rum', 'gin', 'tequ
 const ALCOHOL = [...STRONG_GROUP, 'wine', 'draft'];
 // Storefront navigation: 6 main tiles, then "Ещё к столу". Empty sections are hidden, never shown as empty shelves.
 const CATS = [
-  { slug: 'draft', ico: '🍺', label: 'Пиво', title: 'Пиво', main: true },
-  { slug: 'strong', ico: '🥃', label: 'Крепкое', title: 'Крепкие напитки', main: true, group: STRONG_GROUP },
-  { slug: 'wine', ico: '🍷', label: 'Вино', title: 'Вино', main: true },
-  { slug: 'fish', ico: '🐟', label: 'Рыба', title: 'Рыба', main: true },
-  { slug: 'meat-snacks', ico: '🥩', label: 'Мясное', title: 'Мясные закуски', main: true },
-  { slug: 'cheese', ico: '🧀', label: 'Сыр', title: 'Сыр', main: true },
-  { slug: 'snacks', ico: '🥨', label: 'Снеки', title: 'Снеки' },
-  { slug: 'chips', ico: '🍟', label: 'Чипсы', title: 'Чипсы' },
-  { slug: 'nuts', ico: '🥜', label: 'Орехи', title: 'Орехи' },
-  { slug: 'chocolate', ico: '🍫', label: 'Шоколад', title: 'Шоколад' },
-  { slug: 'soft-drinks', ico: '🥤', label: 'Напитки', title: 'Напитки' },
-  { slug: 'energy', ico: '⚡', label: 'Энергетики', title: 'Энергетики' }
+  { slug: 'draft', ico: '🍺', label: 'Пиво', title: 'Пиво', grp: 'alc' },
+  { slug: 'strong', ico: '🥃', label: 'Крепкое', title: 'Крепкие напитки', grp: 'alc', group: STRONG_GROUP },
+  { slug: 'wine', ico: '🍷', label: 'Вино', title: 'Вино', grp: 'alc' },
+  { slug: 'fish', ico: '🐟', label: 'Рыба', title: 'Рыба', grp: 'food' },
+  { slug: 'meat-snacks', ico: '🥩', label: 'Мясное', title: 'Мясные закуски', grp: 'food' },
+  { slug: 'cheese', ico: '🧀', label: 'Сыр', title: 'Сыр', grp: 'food' },
+  { slug: 'nuts', ico: '🥜', label: 'Орехи', title: 'Орехи', grp: 'food' },
+  { slug: 'chips', ico: '🍟', label: 'Чипсы', title: 'Чипсы', grp: 'food' },
+  { slug: 'snacks', ico: '🥨', label: 'Снеки', title: 'Снеки', grp: 'food' },
+  { slug: 'chocolate', ico: '🍫', label: 'Шоколад', title: 'Шоколад', grp: 'food' },
+  { slug: 'soft-drinks', ico: '🥤', label: 'Напитки', title: 'Напитки', grp: 'more' },
+  { slug: 'energy', ico: '⚡', label: 'Энергетики', title: 'Энергетики', grp: 'more' }
 ];
 const SUB_LABEL = {
   vodka: ['водка', 'არაყი', 'օղի'], whisky: ['виски', 'ვისკი', 'վիսկի'], brandy: ['коньяк', 'კონიაკი', 'կոնյակ'],
@@ -327,8 +327,25 @@ function syncBundle() {
   } catch (e) {}
 }
 
+// Photo/composition order: strong first (ЁРШ), then beer, fish, meat, cheese, nuts, chips, seeds, drinks.
+const ITEM_RANK = { strong: 0, vodka: 0, whisky: 0, brandy: 0, rum: 0, gin: 0, tequila: 0, liqueur: 0, vermouth: 0, wine: 1, draft: 1, fish: 2, 'meat-snacks': 3, cheese: 4, nuts: 5, chips: 6, snacks: 7, chocolate: 7, 'soft-drinks': 8, energy: 8 };
+const ITEM_ICO = { draft: '🍺', wine: '🍷', fish: '🐟', 'meat-snacks': '🥩', cheese: '🧀', nuts: '🥜', chips: '🥔', snacks: '🌻', chocolate: '🍫', 'soft-drinks': '🥤', energy: '⚡' };
+
+function itemSlug(i) {
+  return slugOf(catalog.find(p => p.id === i.product_id)) || ''
+}
+
+function sortedItems(b) {
+  return (b.items || []).slice().sort((a, c) => (ITEM_RANK[itemSlug(a)] ?? 9) - (ITEM_RANK[itemSlug(c)] ?? 9))
+}
+
+function itemQty(i) {
+  const q = Number(i.quantity);
+  return i.unit === 'liter' ? q + unitL() : q > 1 ? '× ' + q : ''
+}
+
 function bundleItemsText(b) {
-  return (b.items || []).map(i => esc(pname(i)) + ' × ' + Number(i.quantity) + (i.unit === 'liter' ? unitL() : '')).join(' · ')
+  return sortedItems(b).map(i => esc(pname(i)) + ' × ' + Number(i.quantity) + (i.unit === 'liter' ? unitL() : '')).join(' · ')
 }
 
 function renderBundles() {
@@ -340,9 +357,23 @@ function renderBundles() {
     const ok = b.available !== false,
       on = ok && checkoutBundle?.id === b.id,
       save = Number(b.savings || 0),
-      thumbs = (b.items || []).slice(0, 4).map(i => '<span>' + (i.image_url ? '<img src="' + esc(i.image_url) + '" alt="" loading="lazy" decoding="async" onerror="this.remove()">' : '') + '</span>').join('');
-    return `<article class="card bundle${ok?'':' off'}${on?' chosen':''}" style="--i:${n}"><div class="bthumbs">${thumbs}</div><div class="pad"><span class="tag">${esc(b.badge_text||'РЫВОК')}</span><h3>${esc(b.name)}</h3>${b.description?'<div class="bidea">'+esc(b.description)+'</div>':''}<div class="binside"><span class="lbl">Внутри:</span> ${bundleItemsText(b)}</div><div class="bprices">${save>0?'<div><span class="lbl">По отдельности</span><s>'+money(b.regular_total)+'</s></div>':''}<div><span class="lbl">Рывком</span><b class="now">${money(b.price)}</b></div>${save>0?'<div><span class="lbl">Экономия</span><b class="save">'+money(save)+'</b></div>':''}</div>${ok?`<button type="button" class="cta" onclick="chooseBundle('${b.id}')">${on?'Рывок выбран ✓':'ВЗЯТЬ РЫВОК'}</button>`:'<button type="button" class="cta" disabled>Временно недоступен</button>'}</div></article>`
+      items = sortedItems(b),
+      thumbs = items.map(i => '<span>' + (i.image_url ? '<img src="' + esc(i.image_url) + '" alt="' + esc(pname(i)) + '" loading="lazy" decoding="async" onerror="this.remove()">' : '') + (itemQty(i) ? '<em>' + itemQty(i) + '</em>' : '') + '</span>').join(''),
+      comp = items.map(i => {
+        const sl = itemSlug(i), ico = STRONG_GROUP.includes(sl) ? '🥃' : ITEM_ICO[sl] || '•', q = Number(i.quantity);
+        return '<li>' + ico + ' ' + esc(pname(i)) + (i.unit === 'liter' ? ' — ' + q + unitL() : q > 1 ? ' × ' + q : '') + '</li>'
+      }).join('');
+    return `<article class="card bundle${ok?'':' off'}${on?' chosen':''}" style="--i:${n}"><div class="bthumbs">${thumbs}</div><div class="pad"><div><span class="tag">${esc(b.badge_text||'РЫВОК')}</span>${b.serves_label?'<span class="serves">'+esc(b.serves_label)+'</span>':''}</div><h3>${esc(b.name)}</h3>${b.description?'<div class="bidea">'+esc(b.description)+'</div>':''}<div class="bprices">${save>0?'<div><span class="lbl">По отдельности</span><s>'+money(b.regular_total)+'</s></div>':''}<div><span class="lbl">Рывком</span><b class="now">${money(b.price)}</b></div>${save>0?'<div><span class="lbl">Экономия</span><b class="save">'+money(save)+'</b></div>':''}</div><ul class="bcomp"><span class="lbl">В составе</span>${comp}</ul>${ok?`<button type="button" class="cta" onclick="chooseBundle('${b.id}')">${on?'Рывок выбран ✓':'ВЗЯТЬ РЫВОК'}</button>`:'<button type="button" class="cta" disabled>Временно недоступен</button>'}</div></article>`
   }).join('')
+}
+
+function goBundles() {
+  document.getElementById('bundlesSection').scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' })
+}
+
+function goBuild() {
+  track('build_start');
+  buildSection.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' })
 }
 
 function totals() {
@@ -422,6 +453,7 @@ function renderGift(total) {
     if (list.length) boost = '<div class="boost"><div class="bt">Добрать быстрее</div>' + list.map(p => `<button type="button" class="boostItem" onclick="boostAdd('${p.id}')"><span>${esc(pname(p))}</span><b>${money(p.sale_price)} +</b></button>`).join('') + '</div>'
   }
   const marks = '<span>0 ₾</span>' + giftTiers.map(x => '<span>' + money(x.threshold) + '</span>').join('');
+  barGift.textContent = total > 0 ? (next ? '🎁 До подарка осталось ' + money(Number(next.threshold) - total) : '🎁 Подарок открыт: ' + (pname(won?.products) || '')) : '';
   boxes.forEach(x => {
     x.hidden = false;
     x.innerHTML = '<strong class="gtext">' + esc(text) + '</strong><div class="bar"><i style="width:' + width + '%"></i></div><div class="marks">' + marks + '</div>' + boost
@@ -585,8 +617,9 @@ function finishUpsellCategory() {
 function renderNav() {
   const vis = CATS.filter(c => catProducts(c.slug).length);
   const tile = c => `<button type="button" class="tile${c.slug===currentCat?' on':''}" data-cat="${c.slug}" aria-pressed="${c.slug===currentCat}"><span class="ti" aria-hidden="true">${c.ico}</span><span class="tt"><b>${c.label}</b><small>${countLabel(c.slug, catProducts(c.slug).length)}</small></span></button>`;
-  tilesMain.innerHTML = vis.filter(c => c.main).map(tile).join('');
-  const more = vis.filter(c => !c.main);
+  tilesAlc.innerHTML = vis.filter(c => c.grp === 'alc').map(tile).join('');
+  tilesFood.innerHTML = vis.filter(c => c.grp === 'food').map(tile).join('');
+  const more = vis.filter(c => c.grp === 'more');
   tilesMore.innerHTML = more.map(tile).join('');
   moreHead.hidden = !more.length;
   catNav.innerHTML = vis.map(c => `<button type="button" class="chip${c.slug===currentCat?' on':''}" data-cat="${c.slug}">${c.ico} ${c.label}</button>`).join('');
@@ -612,6 +645,16 @@ function setCategory(cat, fromUpsell = false) {
   track('category_view', { metadata: { category: cat, via: fromUpsell ? 'upsell' : 'nav' } })
 }
 
+// One quiet retry for reads: mobile networks drop single requests.
+async function retry(fn) {
+  try {
+    return await fn()
+  } catch (e) {
+    await new Promise(r => setTimeout(r, 700));
+    return fn()
+  }
+}
+
 async function changeCity(id) {
   currentCity = cities.find(x => x.id === id) || null;
   if (!currentCity) return;
@@ -634,6 +677,11 @@ async function changeCity(id) {
       renderProducts();
       restoreCart()
     }
+  } catch (e) {
+    console.warn(e)
+  }
+  // Each block loads independently: a failed catalog request must not leave checkout without zones or bank links.
+  try {
     try {
       bundleCatalog = await PIVKA_DB.listBundles(id);
       syncBundle();
@@ -642,7 +690,7 @@ async function changeCity(id) {
     } catch (e) {
       console.warn(e)
     }
-    const [links, zones] = await Promise.all([PIVKA_DB.listPaymentLinks(id), PIVKA_DB.listDeliveryZones(id)]);
+    const [links, zones] = await Promise.all([retry(() => PIVKA_DB.listPaymentLinks(id)), retry(() => PIVKA_DB.listDeliveryZones(id))]);
     // Bank transfer links (BOG / TBC) are shown only when the customer picks «Переводом».
     paymentLinks.innerHTML = links.length ? '<div class="muted payhint">Переведите сумму «К оплате» по ссылке банка и отправьте скриншот в WhatsApp вместе с заказом.</div>' + links.map(x => '<a class="yellow paylink" target="_blank" rel="noopener" href="' + esc(x.url) + '">💳 ' + esc(x.name) + '</a>').join('') : '<div class="muted">Перевод — по реквизитам, которые пришлём в WhatsApp.</div>';
     syncPaymentLinks();
@@ -861,16 +909,19 @@ function observeBundles() {
     if (!e.isIntersecting) return;
     io.disconnect();
     track('bundle_view', { metadata: { count: bundleCatalog.length } })
-  }, { threshold: .3 });
+  }, { threshold: .1 });
   io.observe(bundles)
 }
 coZone.addEventListener('change', updateCheckoutTotal);
 document.addEventListener('pivka:intro-done', () => track('splash_complete'), { once: true });
+try {
+  if (JSON.parse(localStorage.getItem('pivka_profile') || '{}').phone) repeatQuick.classList.remove('hidden')
+} catch (e) {}
 observeNav();
 (async () => {
   track('page_view', { metadata: { lang: lang(), ref: document.referrer ? new URL(document.referrer).hostname : '' } });
   try {
-    [catalog, bundleCatalog, giftTiers, upsellRules, cities, categoryRows] = await Promise.all([PIVKA_DB.listCatalog(), PIVKA_DB.listBundles(localStorage.getItem('pivka_city')).catch(() => []), PIVKA_DB.listGiftTiers().catch(() => []), PIVKA_DB.listUpsellRules().catch(() => []), PIVKA_DB.listCities(), PIVKA_DB.listCategories().catch(() => [])]);
+    [catalog, bundleCatalog, giftTiers, upsellRules, cities, categoryRows] = await Promise.all([retry(() => PIVKA_DB.listCatalog()), PIVKA_DB.listBundles(localStorage.getItem('pivka_city')).catch(() => []), PIVKA_DB.listGiftTiers().catch(() => []), PIVKA_DB.listUpsellRules().catch(() => []), retry(() => PIVKA_DB.listCities()), PIVKA_DB.listCategories().catch(() => [])]);
     categoryRows.forEach(c => catById[c.id] = c);
     catalog.forEach(p => {
       if (p.name_i18n) nameI18n[p.id] = p.name_i18n
