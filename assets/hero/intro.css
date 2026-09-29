@@ -1,17 +1,18 @@
 .brand-intro{position:relative;isolation:isolate;width:100%;height:100vh;height:100svh;overflow:hidden;background:#130d09 url('./pivka-scene.jpg') center center/cover no-repeat;display:flex;align-items:center;color:#fff}
 .brand-intro::before{content:'';position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(5,5,5,.84) 0%,rgba(5,5,5,.68) 35%,rgba(5,5,5,.16) 75%),linear-gradient(0deg,rgba(5,5,5,.34),transparent 40%)}
 .brand-intro__exit{width:100%}
-.brand-intro__content{width:min(1280px,100%);margin:auto;padding:calc(34px + env(safe-area-inset-top)) clamp(22px,7vw,100px) calc(40px + env(safe-area-inset-bottom));animation:intro-arrive .65s ease-out both}
-.brand-intro__title{font-size:clamp(52px,8vw,132px);line-height:.9;letter-spacing:-.045em;font-weight:1000;margin:0 0 25px;text-shadow:0 5px 35px #0009}.brand-intro__title span{color:#ffba26}
-.brand-intro__tagline{font-size:clamp(15px,1.8vw,23px);font-weight:800;letter-spacing:.1em;margin:0 0 22px}
+.brand-intro__content{width:min(1280px,100%);margin:auto;padding:calc(34px + env(safe-area-inset-top)) clamp(22px,7vw,100px) calc(40px + env(safe-area-inset-bottom));}
+.brand-intro__title{font-size:clamp(52px,8vw,132px);line-height:.9;letter-spacing:-.045em;font-weight:1000;margin:0 0 25px;text-shadow:0 5px 35px #0009}.brand-intro__title .l2{color:#ffba26}
+.brand-intro__tagline{font-size:clamp(18px,2.2vw,26px);line-height:1.2;font-weight:800;margin:0 0 10px;max-width:22em}
+.brand-intro__how{font-size:clamp(16px,1.8vw,21px);line-height:1.3;color:#e8e1d3;font-weight:600;margin:0 0 26px;max-width:24em}
 .brand-intro__phone{display:inline-block;color:#fff;font-size:clamp(19px,2vw,27px);font-weight:800;text-decoration:none;border-bottom:1px solid #ffc352;margin-bottom:24px}
-.brand-intro__cta{display:block;background:#ffb51b;color:#160e05;border:0;border-radius:15px;padding:18px 27px;min-height:58px;font-size:clamp(16px,1.8vw,22px);font-weight:900;cursor:pointer;box-shadow:0 10px 34px #0007;animation:intro-cta .4s .3s ease-out both}
+.brand-intro__cta{display:block;background:#ffb51b;color:#160e05;border:0;border-radius:15px;padding:18px 27px;min-height:58px;font-size:clamp(16px,1.8vw,22px);font-weight:900;cursor:pointer;box-shadow:0 10px 34px #0007;}
 .brand-intro__cta:focus-visible,.brand-intro__phone:focus-visible,.contact-link:focus-visible,.checkout-contact a:focus-visible{outline:3px solid #fff;outline-offset:4px}
 .brand-intro__progress{display:none}
 .contact-link,.checkout-contact a{color:#ffba26;text-decoration:underline;text-underline-offset:3px}.contact-link{display:inline-block;margin-top:8px;font-size:15px}.checkout-contact{color:#aeb4b7;font-size:13px;line-height:1.5}
 @keyframes intro-arrive{from{opacity:0;transform:scale(.975) translateY(10px)}to{opacity:1;transform:none}}@keyframes intro-cta{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-@media(max-width:700px){.brand-intro{align-items:flex-end;background-position:68% center}.brand-intro::before{background:linear-gradient(0deg,rgba(6,6,6,.94) 0%,rgba(6,6,6,.76) 38%,rgba(6,6,6,.12) 80%)}.brand-intro__content{padding:calc(18px + env(safe-area-inset-top)) 22px calc(32px + env(safe-area-inset-bottom))}.brand-intro__title{font-size:clamp(48px,13vw,79px);margin-bottom:16px}.brand-intro__tagline{font-size:clamp(13px,3.7vw,18px);letter-spacing:.04em;white-space:nowrap}.brand-intro__phone{font-size:21px;margin-bottom:20px}.brand-intro__cta{width:100%;min-height:56px}}
-@media(max-height:580px){.brand-intro__content{padding-top:calc(12px + env(safe-area-inset-top));padding-bottom:calc(14px + env(safe-area-inset-bottom))}.brand-intro__title{font-size:clamp(36px,10vh,70px);margin-bottom:12px}.brand-intro__tagline{margin-bottom:9px}.brand-intro__phone{margin-bottom:12px}}
+@media(max-width:700px){.brand-intro{align-items:flex-end;background-position:68% center}.brand-intro::before{background:linear-gradient(0deg,rgba(6,6,6,.94) 0%,rgba(6,6,6,.76) 38%,rgba(6,6,6,.12) 80%)}.brand-intro__content{padding:calc(18px + env(safe-area-inset-top)) 22px calc(32px + env(safe-area-inset-bottom))}.brand-intro__title{font-size:clamp(48px,13vw,79px);margin-bottom:16px}.brand-intro__tagline{font-size:clamp(18px,5.2vw,23px)}.brand-intro__how{font-size:clamp(15px,4.3vw,18px);margin-bottom:22px}.brand-intro__phone{font-size:21px;margin-bottom:20px}.brand-intro__cta{width:100%;min-height:56px}}
+@media(max-height:580px){.brand-intro__content{padding-top:calc(12px + env(safe-area-inset-top));padding-bottom:calc(14px + env(safe-area-inset-bottom))}.brand-intro__title{font-size:clamp(36px,10vh,70px);margin-bottom:12px}.brand-intro__tagline{margin-bottom:6px}.brand-intro__how{margin-bottom:12px}.brand-intro__phone{margin-bottom:12px}}
 
 /* Curtain (splash) — only when JS runs; without JS the intro stays a normal first section.
    Phases like the Marianna project: hold → revealing (whole curtain slides up) → done (removed). */
@@ -41,4 +42,27 @@ html.intro-lock,html.intro-lock body{overflow:hidden;overscroll-behavior:none}
   .js .brand-intro.is-revealing .brand-intro__exit{transform:none}
   .js .app.pre-enter,.js .reveal{transform:none}
   html:focus-within{scroll-behavior:auto}
+}
+
+/* Staged splash: ПИВКА → ДЛЯ РЫВКА (+120 ms) → что продаём (+600) → как заказать (+1000) → CTA (+1300). Mask/clip reveal for the title. */
+.brand-intro__title .mask{display:inline-block;overflow:hidden;vertical-align:bottom;padding-bottom:.06em}
+.brand-intro__title .mask>span{display:inline-block;animation:mask-up .9s cubic-bezier(.16,1,.3,1) both}
+.brand-intro__title .l2{animation-delay:.12s}
+.stage{animation:stage-in .7s cubic-bezier(.16,1,.3,1) both}
+.s3{animation-delay:.6s}.s4{animation-delay:1s}.s5{animation-delay:1.3s}
+@keyframes mask-up{from{clip-path:inset(100% 0 0 0);transform:translate3d(0,28px,0)}to{clip-path:inset(0 0 0 0);transform:none}}
+@keyframes stage-in{from{opacity:0;transform:translate3d(0,14px,0)}to{opacity:1;transform:none}}
+html.intro-short .brand-intro .mask>span,html.intro-short .brand-intro .stage{animation-duration:.25s;animation-delay:0s}
+
+/* Section titles: the splash lifting away opens the first section (one scene, not two screens). */
+.sec-title .mask>span{transition:clip-path .9s cubic-bezier(.16,1,.3,1) .12s,transform .9s cubic-bezier(.16,1,.3,1) .12s}
+.js .app.pre-enter .sec-title .mask>span,.js .app .reveal:not(.in) .sec-title .mask>span{clip-path:inset(100% 0 0 0);transform:translate3d(0,26px,0)}
+.js .app .reveal .tile,.js .app .reveal .card.bundle{transition:opacity .7s cubic-bezier(.16,1,.3,1),transform .7s cubic-bezier(.16,1,.3,1);transition-delay:calc(var(--i,0)*90ms)}
+.js .app .reveal:not(.in) .tile,.js .app .reveal:not(.in) .card.bundle{opacity:0;transform:translate3d(0,22px,0)}
+.js .app.pre-enter .card.bundle{opacity:0;transform:translate3d(24px,0,0)}
+.js .app.enter .card.bundle{transition:opacity .7s cubic-bezier(.16,1,.3,1) .2s,transform .7s cubic-bezier(.16,1,.3,1) .2s}
+@media(prefers-reduced-motion:reduce){
+  .brand-intro__title .mask>span,.stage{animation:none}
+  .js .app.pre-enter .sec-title .mask>span,.js .app .reveal:not(.in) .sec-title .mask>span{clip-path:none;transform:none}
+  .js .app .reveal:not(.in) .tile,.js .app .reveal:not(.in) .card.bundle,.js .app.pre-enter .card.bundle{opacity:1;transform:none}
 }

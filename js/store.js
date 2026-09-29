@@ -1,0 +1,1045 @@
+const cart = {};
+let catalog = [],
+  bundleCatalog = [],
+  giftTiers = [],
+  upsellRules = [],
+  cities = [],
+  currentCity = null,
+  selected = null,
+  selectedQty = 2,
+  fulfillment = 'delivery',
+  checkoutBundle = null,
+  socialType = 'TREAT',
+  currentCat = 'draft',
+  nameI18n = {},
+  categoryRows = [],
+  catById = {},
+  catPicked = false;
+const lang = () => document.documentElement.lang || 'ru';
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const STRONG_GROUP = ['strong', 'vodka', 'whisky', 'brandy', 'rum', 'gin', 'tequila', 'liqueur', 'vermouth'];
+const ALCOHOL = [...STRONG_GROUP, 'wine', 'draft'];
+// Storefront navigation: 6 main tiles, then "Ещё к столу". Empty sections are hidden, never shown as empty shelves.
+const CATS = [
+  { slug: 'draft', ico: '🍺', label: 'Пиво', title: 'Пиво', main: true },
+  { slug: 'strong', ico: '🥃', label: 'Крепкое', title: 'Крепкие напитки', main: true, group: STRONG_GROUP },
+  { slug: 'wine', ico: '🍷', label: 'Вино', title: 'Вино', main: true },
+  { slug: 'fish', ico: '🐟', label: 'Рыба', title: 'Рыба', main: true },
+  { slug: 'meat-snacks', ico: '🥩', label: 'Мясное', title: 'Мясные закуски', main: true },
+  { slug: 'cheese', ico: '🧀', label: 'Сыр', title: 'Сыр', main: true },
+  { slug: 'snacks', ico: '🥨', label: 'Снеки', title: 'Снеки' },
+  { slug: 'chips', ico: '🍟', label: 'Чипсы', title: 'Чипсы' },
+  { slug: 'nuts', ico: '🥜', label: 'Орехи', title: 'Орехи' },
+  { slug: 'chocolate', ico: '🍫', label: 'Шоколад', title: 'Шоколад' },
+  { slug: 'soft-drinks', ico: '🥤', label: 'Напитки', title: 'Напитки' },
+  { slug: 'energy', ico: '⚡', label: 'Энергетики', title: 'Энергетики' }
+];
+const SUB_LABEL = {
+  vodka: ['водка', 'არაყი', 'օղի'], whisky: ['виски', 'ვისკი', 'վիսկի'], brandy: ['коньяк', 'კონიაკი', 'կոնյակ'],
+  strong: ['ликёры', 'ლიქიორები', 'լիկյորներ'], rum: ['ром', 'რომი', 'ռոմ'], gin: ['джин', 'ჯინი', 'ջին'], tequila: ['текила', 'ტეკილა', 'տեկիլա']
+};
+const LI = () => ({ ru: 0, ka: 1, hy: 2 }[lang()] || 0);
+const tr = s => (window.PIVKA_I18N ? PIVKA_I18N.translate(s, lang()) : s);
+function catConf(slug) {
+  return CATS.find(c => c.slug === slug) || CATS.find(c => c.group && c.group.includes(slug)) || null
+}
+function slugOf(p) {
+  return p?.categories?.slug || p?.category_slug || ''
+}
+function inCat(p, slug) {
+  const c = CATS.find(x => x.slug === slug);
+  return c && c.group ? c.group.includes(slugOf(p)) : slugOf(p) === slug
+}
+function catProducts(slug) {
+  return catalog.filter(p => inCat(p, slug))
+}
+function plural(n, forms) {
+  if (LI()) return n + ' ' + forms[LI() + 2];
+  const m10 = n % 10, m100 = n % 100;
+  return n + ' ' + (m10 === 1 && m100 !== 11 ? forms[0] : m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20) ? forms[1] : forms[2])
+}
+function countLabel(slug, n) {
+  return slug === 'draft' ? plural(n, ['сорт', 'сорта', 'сортов', 'სახეობა', 'տեսակ']) : plural(n, ['позиция', 'позиции', 'позиций', 'პროდუქტი', 'ապրանք'])
+}
+function track(event, extra = {}) {
+  try { PIVKA_DB.trackEvent(event, extra) } catch (e) {}
+}
+
+function pname(p) {
+  if (!p) return '';
+  const n = p.name_i18n || nameI18n[p.id || p.product_id];
+  return (n && n[lang()]) || p.name || ''
+}
+
+function unitL() {
+  return {
+    ru: ' л',
+    ka: ' ლ',
+    hy: ' լ'
+  } [lang()] || ' л'
+}
+
+function esc(v) {
+  return String(v ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  } [c]))
+}
+const money = n => Number(n).toFixed(2).replace('.00', '') + ' ₾';
+
+function openRequest() {
+  requestOverlay.classList.add('on')
+}
+async function sendRequest() {
+  if (requestProduct.value.trim().length < 2) {
+    alert('Напиши название товара');
+    return
+  }
+  try {
+    await PIVKA_DB.submitProductRequest(requestProduct.value.trim(), requestPhone.value.trim(), requestComment.value.trim());
+    requestBody.innerHTML = '<div class="success"><div class="big">✓</div><h2>Записали</h2><p class="muted">Если такой товар часто спрашивают, магазин увидит это в разделе спроса.</p></div>'
+  } catch (e) {
+    alert(e.message)
+  }
+}
+
+function openRepeat() {
+  repeatOverlay.classList.add('on')
+}
+async function findRepeat() {
+  try {
+    const r = await PIVKA_DB.getRepeatOrder(repeatPhone.value.trim());
+    if (!r.found) {
+      repeatBody.innerHTML = '<div class="empty">Прошлый заказ не найден</div>';
+      return
+    }
+    const unavailable = (r.items || []).filter(i => !i.active || Number(i.available) < Number(i.quantity));
+    repeatBody.innerHTML = '<h3>Заказ №' + r.order_number + '</h3>' + (r.items || []).map(i => '<div class="line row"><span>' + i.name + ' × ' + i.quantity + '</span><b>' + money(Number(i.current_price) * Number(i.quantity)) + '</b></div>').join('') + (unavailable.length ? '<div class="error">Некоторых товаров сейчас не хватает. Добавим доступные, остальные можно заменить вручную.</div>' : '<button class="yellow checkout" onclick=\'applyRepeat(' + JSON.stringify(JSON.stringify(r.items)) + ')\'>Добавить всё в корзину →</button>')
+  } catch (e) {
+    alert(e.message)
+  }
+}
+
+function applyRepeat(raw) {
+  const items = JSON.parse(raw);
+  items.forEach(i => {
+    const p = catalog.find(x => x.id === i.product_id);
+    if (!p) return;
+    if (p.active && Number(p.stock_quantity) >= Number(i.quantity)) PIVKA_DB.trackEvent('add_to_cart', {
+      productId: p.id
+    });
+    cart[p.id] = {
+      p,
+      qty: p.unit === 'liter' ? Math.max(2, Math.floor(Number(i.quantity) / 2) * 2) : Number(i.quantity)
+    }
+  });
+  renderCart();
+  closeSheet('repeatOverlay');
+  openCart()
+}
+
+function openPass() {
+  passOverlay.classList.add('on')
+}
+async function activatePass() {
+  if (passPhone.value.trim().length < 6) {
+    alert('Укажи телефон');
+    return
+  }
+  try {
+    const r = await PIVKA_DB.startPass(passName.value.trim(), passPhone.value.trim());
+    passBody.innerHTML = '<div class="success"><div class="big">👑</div><h2>PASS подготовлен</h2><p class="muted">3 ₾ / месяц. Подписка активируется после подтверждённой оплаты.</p></div>'
+  } catch (e) {
+    alert(e.message)
+  }
+}
+
+function openSocial(type) {
+  socialType = type;
+  socialTitle.textContent = type === 'TREAT' ? '🍻 Угостить друга' : '🏆 Спорим на пиво?';
+  socialSub.textContent = type === 'TREAT' ? 'Выбери угощение и отправь ссылку другу' : 'Выбери ставку и отправь ссылку сопернику';
+  socialBody.innerHTML = '<input id="socialName" placeholder="Твоё имя"><input id="socialPhone" inputmode="tel" autocomplete="tel" placeholder="Твой телефон *"><select id="socialStake"></select><textarea id="socialMessage" placeholder="Сообщение другу"></textarea><div class="error" id="socialError"></div><button class="yellow checkout" onclick="createSocial()">Создать ссылку →</button>';
+  const opts = bundleCatalog.filter(b => b.available !== false).map(b => '<option value="b:' + b.id + '">' + esc(b.name) + ' — ' + money(b.price) + '</option>');
+  catalog.filter(p => p.unit === 'liter').forEach(p => opts.push('<option value="p:' + p.id + '">' + esc(pname(p)) + ' — ' + money(Number(p.sale_price) * Number(p.minimum_quantity || 2)) + '</option>'));
+  socialStake.innerHTML = opts.length ? opts.join('') : '<option value="">Нет доступных ставок</option>';
+  const prof = JSON.parse(localStorage.getItem('pivka_profile') || '{}');
+  socialName.value = prof.name || '';
+  socialPhone.value = prof.phone || '';
+  socialOverlay.classList.add('on')
+}
+async function createSocial() {
+  socialError.textContent = '';
+  if (socialPhone.value.trim().length < 6) {
+    socialError.textContent = 'Укажи телефон';
+    return
+  }
+  const [kind, id] = socialStake.value.split(':');
+  try {
+    const r = await PIVKA_DB.createSocialOrder({
+      type: socialType,
+      name: socialName.value.trim(),
+      phone: socialPhone.value.trim(),
+      bundleId: kind === 'b' ? id : null,
+      productId: kind === 'p' ? id : null,
+      quantity: kind === 'p' ? (catalog.find(x => x.id === id)?.minimum_quantity || 2) : 1,
+      message: socialMessage.value.trim()
+    });
+    const link = location.origin + location.pathname + '?social=' + r.token;
+    socialBody.innerHTML = '<div class="success"><div class="big">' + (socialType === 'TREAT' ? '🍻' : '🏆') + '</div><h2>Ссылка готова</h2><p class="muted">Отправь её другу. Он откроет ссылку и подтвердит участие/адрес.</p><input id="shareLink" value="' + link + '" readonly><button class="yellow checkout" onclick="navigator.clipboard.writeText(shareLink.value)">Скопировать ссылку</button></div>'
+  } catch (e) {
+    socialError.textContent = e.message
+  }
+}
+async function openIncoming(token) {
+  try {
+    const x = await PIVKA_DB.getSocialOrder(token);
+    socialTitle.textContent = x.type === 'BET' ? '🏆 Тебя вызывают на спор' : '🍻 Тебя хотят угостить';
+    socialSub.textContent = x.bundle_name || x.product_name || 'Пивка для рывка';
+    socialBody.innerHTML = '<div class="form"><p class="muted">' + (x.message || '') + '</p><input id="inName" placeholder="Твоё имя"><input id="inPhone" inputmode="tel" placeholder="Телефон"><input id="inAddress" placeholder="Адрес"><button class="yellow checkout" onclick="acceptIncoming(\'' + token + '\')">' + (x.type === 'BET' ? 'Принять спор' : 'Принять угощение') + '</button></div>';
+    socialOverlay.classList.add('on')
+  } catch (e) {}
+}
+async function acceptIncoming(token) {
+  try {
+    const r = await PIVKA_DB.acceptSocialOrder(token, {
+      name: inName.value,
+      phone: inPhone.value,
+      address: inAddress.value
+    });
+    socialBody.innerHTML = r.type === 'BET' ? '<div class="success"><div class="big">🏆</div><h2>Спор принят</h2><p class="muted">После результата проигравший подтверждает проигрыш и оплачивает ставку.</p><button class="yellow checkout" onclick="declareLoss(\'' + token + '\',\'RECIPIENT\')">Я проиграл</button></div>' : '<div class="success"><div class="big">🍻</div><h2>Адрес подтверждён</h2><p class="muted">Теперь отправитель может оплатить угощение.</p><button class="yellow checkout" onclick="prepareTreat(\'' + token + '\')">Подготовить заказ к оплате</button></div>'
+  } catch (e) {
+    alert(e.message)
+  }
+}
+async function prepareTreat(token) {
+  try {
+    const r = await PIVKA_DB.finalizeTreat(token);
+    socialBody.innerHTML = '<div class="success"><div class="big">💳</div><h2>Заказ №' + r.order_number + ' подготовлен</h2><p class="muted">Сумма: ' + money(r.total) + '<br>Он ждёт онлайн-оплаты. Платёжный провайдер подключим отдельно — до этого заказ не считается оплаченным.</p></div>'
+  } catch (e) {
+    alert(e.message)
+  }
+}
+async function declareLoss(token, side) {
+  try {
+    const r = await PIVKA_DB.resolveBet(token, side);
+    socialBody.innerHTML = '<div class="success"><div class="big">💳</div><h2>Результат записан</h2><p class="muted">Заказ победителю создан и ждёт онлайн-оплаты проигравшим. Доставка не запускается до подтверждения оплаты.</p></div>'
+  } catch (e) {
+    alert(e.message)
+  }
+}
+
+function closeSheet(id) {
+  document.getElementById(id).classList.remove('on')
+}
+
+function icon(p) {
+  const x = p.categories?.slug;
+  return ['strong', 'vodka', 'whisky', 'brandy', 'rum', 'gin', 'tequila', 'wine'].includes(x) ? '🥃' : x === 'fish' ? '🐟' : x === 'cheese' ? '🧀' : x === 'snacks' ? '🥨' : x === 'chips' ? '🍟' : x === 'nuts' ? '🥜' : x === 'soft-drinks' ? '🥤' : '🍺'
+}
+
+function openSheet(id) {
+  document.getElementById(id).classList.add('on')
+}
+
+function bumpCart() {
+  const bar = document.querySelector('.cart');
+  if (!bar || reducedMotion) return;
+  bar.classList.remove('bump');
+  void bar.offsetWidth;
+  bar.classList.add('bump')
+}
+
+function openQty(p) {
+  selected = p;
+  selectedQty = Math.max(2, Number(p.minimum_quantity || 2));
+  const step = Math.max(2, Number(p.quantity_step || 2));
+  qtyName.textContent = pname(p);
+  // Draft beer: 2 / 4 / 6 / 8 л only (min 2, step 2).
+  const vals = [0, 1, 2, 3].map(i => selectedQty + i * step);
+  qtyButtons.innerHTML = vals.map((v, i) => `<button type="button" class="q ${i?'':'on'}" onclick="pickQty(this,${v})">${v}${unitL()}<br><small>${money(v*p.sale_price)}</small></button>`).join('');
+  qtyAdd.onclick = () => {
+    closeSheet('qtyOverlay');
+    add(p, selectedQty)
+  };
+  track('product_view', { productId: p.id });
+  openSheet('qtyOverlay')
+}
+
+function pickQty(el, q) {
+  selectedQty = q;
+  document.querySelectorAll('.q').forEach(x => x.classList.remove('on'));
+  el.classList.add('on')
+}
+
+function add(p, q = 1, opts = {}) {
+  if (p.unit === 'liter') q = Math.max(2, Math.floor(Number(q) / 2) * 2);
+  if (cart[p.id]) cart[p.id].qty += q;
+  else cart[p.id] = { p, qty: q };
+  const via = opts.boost ? 'gift_boost' : upsellReturn ? 'upsell' : 'catalog';
+  track('add_to_cart', { productId: p.id, metadata: { qty: q, via } });
+  if (via !== 'catalog') track('upsell_add', { productId: p.id, metadata: { via, category: slugOf(p) } });
+  renderCart();
+  bumpCart();
+  if (upsellReturn) {
+    renderProducts();
+    return
+  }
+  if (!opts.boost) setTimeout(() => offerUpsell(p), 180)
+}
+
+function chooseBundle(id) {
+  const b = bundleCatalog.find(x => x.id === id);
+  if (!b || b.available === false) return;
+  checkoutBundle = b;
+  try {
+    localStorage.setItem('pivka_bundle', b.id)
+  } catch (e) {}
+  track('bundle_add', { bundleId: b.id });
+  cartHint.textContent = 'Готовый рывок «' + b.name + '» выбран. Теперь добавь к нему любые товары.';
+  renderCart();
+  renderBundles();
+  openCart()
+}
+
+function removeBundle() {
+  checkoutBundle = null;
+  try {
+    localStorage.removeItem('pivka_bundle')
+  } catch (e) {}
+  renderCart();
+  renderBundles();
+  openCart()
+}
+
+function syncBundle() {
+  let id = checkoutBundle?.id;
+  if (!id) try {
+    id = localStorage.getItem('pivka_bundle')
+  } catch (e) {}
+  if (!id) return;
+  const b = bundleCatalog.find(x => x.id === id);
+  checkoutBundle = b && b.available !== false ? b : null;
+  if (!checkoutBundle) try {
+    localStorage.removeItem('pivka_bundle')
+  } catch (e) {}
+}
+
+function bundleItemsText(b) {
+  return (b.items || []).map(i => esc(pname(i)) + ' × ' + Number(i.quantity) + (i.unit === 'liter' ? unitL() : '')).join(' · ')
+}
+
+function renderBundles() {
+  if (!bundleCatalog.length) {
+    bundles.innerHTML = '<div class="empty">Готовые рывки скоро появятся</div>';
+    return
+  }
+  bundles.innerHTML = bundleCatalog.map((b, n) => {
+    const ok = b.available !== false,
+      on = ok && checkoutBundle?.id === b.id,
+      save = Number(b.savings || 0),
+      thumbs = (b.items || []).slice(0, 4).map(i => '<span>' + (i.image_url ? '<img src="' + esc(i.image_url) + '" alt="" loading="lazy" decoding="async" onerror="this.remove()">' : '') + '</span>').join('');
+    return `<article class="card bundle${ok?'':' off'}${on?' chosen':''}" style="--i:${n}"><div class="bthumbs">${thumbs}</div><div class="pad"><span class="tag">${esc(b.badge_text||'РЫВОК')}</span><h3>${esc(b.name)}</h3>${b.description?'<div class="bidea">'+esc(b.description)+'</div>':''}<div class="binside"><span class="lbl">Внутри:</span> ${bundleItemsText(b)}</div><div class="bprices">${save>0?'<div><span class="lbl">По отдельности</span><s>'+money(b.regular_total)+'</s></div>':''}<div><span class="lbl">Рывком</span><b class="now">${money(b.price)}</b></div>${save>0?'<div><span class="lbl">Экономия</span><b class="save">'+money(save)+'</b></div>':''}</div>${ok?`<button type="button" class="cta" onclick="chooseBundle('${b.id}')">${on?'Рывок выбран ✓':'ВЗЯТЬ РЫВОК'}</button>`:'<button type="button" class="cta" disabled>Временно недоступен</button>'}</div></article>`
+  }).join('')
+}
+
+function totals() {
+  return Object.values(cart).reduce((s, x) => s + x.qty * Number(x.p.sale_price), 0)
+}
+
+function orderBase() {
+  return totals() + Number(checkoutBundle?.price || 0)
+}
+
+function renderCart() {
+  const items = Object.values(cart),
+    total = orderBase(),
+    count = items.length;
+  PIVKA_DB.saveCart(items.map(x => ({
+    product_id: x.p.id,
+    quantity: x.qty
+  })), total).catch(() => {});
+  const bundleCount = checkoutBundle ? 1 : 0;
+  cartCount.textContent = (count || bundleCount) ? '🛒 ' + (count + bundleCount) + ' поз.' : '🛒 Корзина пуста';
+  cartTotal.textContent = money(total) + ' →';
+  document.querySelector('.cart').classList.toggle('show', count > 0 || bundleCount > 0);
+  renderGift(total);
+  try {
+    localStorage.setItem('pivka_cart', JSON.stringify(items.map(x => ({
+      id: x.p.id,
+      qty: x.qty
+    }))))
+  } catch (e) {}
+}
+
+// ---------- Gift progress: server grants only the highest reached tier; here we show the way to the next one.
+let giftLastWon = null;
+
+function boostCandidates(rem) {
+  const targets = upsellTargets(cartSources());
+  const pool = catalog.filter(p => p.unit !== 'liter' && !cart[p.id] && Number(p.sale_price) > 0 && !ALCOHOL.includes(slugOf(p)));
+  const rel = pool.filter(p => targets.some(t => inCat(p, t) || slugOf(p) === t));
+  const base = rel.length >= 2 ? rel : pool.filter(p => ['snacks', 'chips', 'nuts', 'fish', 'cheese', 'meat-snacks', 'chocolate'].includes(slugOf(p)));
+  return base.sort((a, b) => {
+    const A = Number(a.sale_price), B = Number(b.sale_price);
+    return (A >= rem ? 0 : 1) - (B >= rem ? 0 : 1) || Math.abs(A - rem) - Math.abs(B - rem)
+  }).slice(0, 3)
+}
+
+function boostAdd(id) {
+  const p = catalog.find(x => x.id === id);
+  if (!p) return;
+  add(p, 1, { boost: true });
+  if (cartOverlay.classList.contains('on')) openCart()
+}
+
+function renderGift(total) {
+  const boxes = [giftBlock, cartGift].filter(Boolean);
+  if (!giftTiers.length) {
+    boxes.forEach(x => x.hidden = true);
+    return
+  }
+  const next = giftTiers.find(x => total < Number(x.threshold)),
+    won = [...giftTiers].reverse().find(x => total >= Number(x.threshold)),
+    wonAt = won ? Number(won.threshold) : 0;
+  if (giftLastWon !== null && wonAt > giftLastWon) track('gift_reached', { metadata: { threshold: wonAt, total } });
+  giftLastWon = wonAt;
+  let text, width;
+  if (next) {
+    const rem = money(Number(next.threshold) - total);
+    text = won ? '🎁 ' + pname(won.products) + ' открыт · ещё ' + rem + ' до следующего' : total > 0 ? '🎁 До подарка осталось ' + rem : '🎁 Закажи от ' + money(next.threshold) + ' — подарок: ' + pname(next.products);
+    width = Math.min(100, total / Number(next.threshold) * 100)
+  } else {
+    text = '🎁 Подарок открыт: ' + (pname(won?.products) || 'максимальный уровень');
+    width = 100
+  }
+  let boost = '';
+  // Top-up hints only when the gift is genuinely close; otherwise they would push expensive items.
+  if (next && total > 0 && Number(next.threshold) - total <= 15) {
+    const list = boostCandidates(Number(next.threshold) - total);
+    if (list.length) boost = '<div class="boost"><div class="bt">Добрать быстрее</div>' + list.map(p => `<button type="button" class="boostItem" onclick="boostAdd('${p.id}')"><span>${esc(pname(p))}</span><b>${money(p.sale_price)} +</b></button>`).join('') + '</div>'
+  }
+  const marks = '<span>0 ₾</span>' + giftTiers.map(x => '<span>' + money(x.threshold) + '</span>').join('');
+  boxes.forEach(x => {
+    x.hidden = false;
+    x.innerHTML = '<strong class="gtext">' + esc(text) + '</strong><div class="bar"><i style="width:' + width + '%"></i></div><div class="marks">' + marks + '</div>' + boost
+  })
+}
+
+// ---------- Cart
+function deliveryHint() {
+  const fees = [...coZone.options].map(o => Number(o.dataset.fee)).filter(n => !isNaN(n));
+  return fees.length ? 'Доставка от ' + money(Math.min(...fees)) + ' · самовывоз бесплатно' : ''
+}
+
+function openCart() {
+  const items = Object.values(cart);
+  const bundleLine = checkoutBundle ? '<div class="line row"><div><b>🔥 ' + esc(checkoutBundle.name) + '</b><div class="muted">Готовый рывок · цена уже со скидкой</div><div class="muted">' + bundleItemsText(checkoutBundle) + '</div></div><div class="step"><b style="white-space:nowrap">' + money(checkoutBundle.price) + '</b><button type="button" aria-label="Убрать рывок" onclick="removeBundle()">×</button></div></div>' : '';
+  cartLines.innerHTML = bundleLine + (items.length ? items.map(x => `<div class="line row"><div><b>${esc(pname(x.p))}</b><div class="muted">${money(x.p.sale_price)} × ${x.qty}${x.p.unit==='liter'?unitL():''}</div></div><div class="step"><button type="button" onclick="change('${x.p.id}',-1)">−</button><b>${x.qty}</b><button type="button" onclick="change('${x.p.id}',1)">+</button></div></div>`).join('') : (checkoutBundle ? '' : '<div class="empty">Пока пусто. Добавь что-нибудь вкусное.</div>'));
+  const recs = (items.length || checkoutBundle) ? upsellTargets(cartSources()).slice(0, 3) : [];
+  cartRecs.innerHTML = recs.length ? '<div class="bt">К этому обычно берут</div><div class="recs">' + recs.map(t => {
+    const [ico, label] = targetLabel(t);
+    return '<button type="button" onclick="openUpsellCategory(\'' + t + '\')">' + ico + ' ' + esc(label) + '</button>'
+  }).join('') + '</div>' : '';
+  cartDelivery.textContent = (items.length || checkoutBundle) ? deliveryHint() : '';
+  sheetTotal.textContent = money(orderBase());
+  track('cart_open', { metadata: { total: orderBase(), lines: items.length + (checkoutBundle ? 1 : 0) } });
+  openSheet('cartOverlay')
+}
+
+function change(id, d) {
+  const x = cart[id];
+  if (!x) return;
+  x.qty += d * (x.p.unit === 'liter' ? 2 : 1);
+  if (x.p.unit === 'liter' && x.qty > 0 && x.qty < 2) x.qty = 2;
+  if (x.qty <= 0) delete cart[id];
+  renderCart();
+  openCart()
+}
+
+function clearCart() {
+  if (!Object.keys(cart).length && !checkoutBundle) return;
+  if (!confirm('Очистить весь заказ?')) return;
+  Object.keys(cart).forEach(k => delete cart[k]);
+  checkoutBundle = null;
+  try {
+    localStorage.removeItem('pivka_bundle');
+    localStorage.removeItem('pivka_cart')
+  } catch (e) {}
+  renderBundles();
+  upsellFlow = null;
+  upsellReturn = false;
+  upsellCategory = null;
+  upsellOffered.clear();
+  upsellCategoryBar.classList.add('hidden');
+  renderCart();
+  cartLines.innerHTML = '<div class="empty">Корзина очищена</div>';
+  cartRecs.innerHTML = '';
+  cartDelivery.textContent = '';
+  sheetTotal.textContent = money(0);
+  cartHint.textContent = 'Добавь товары заново'
+}
+
+// ---------- Upsell: rules come from public.upsell_rules (product rule first, else category rule),
+// two-way, and always skip sections already present anywhere in the cart (including the chosen Рывок).
+let upsellReturn = false,
+  upsellCategory = null,
+  upsellFlow = null;
+const upsellOffered = new Set();
+
+function cartSources() {
+  const list = Object.values(cart).map(x => x.p);
+  (checkoutBundle?.items || []).forEach(i => {
+    const p = catalog.find(q => q.id === i.product_id);
+    if (p) list.push(p)
+  });
+  return list
+}
+
+function upsellTargets(sources) {
+  const inCart = new Set(cartSources().map(slugOf)),
+    score = new Map();
+  sources.forEach(p => {
+    let rules = upsellRules.filter(r => r.source_product_id && r.source_product_id === p.id);
+    if (!rules.length) rules = upsellRules.filter(r => r.source_category_id && catById[r.source_category_id]?.slug === slugOf(p));
+    rules.forEach(r => {
+      const t = catById[r.target_category_id]?.slug;
+      if (t) score.set(t, Math.min(score.has(t) ? score.get(t) : 1e9, Number(r.priority || 100)))
+    })
+  });
+  return [...score].filter(([t]) => !inCart.has(t) && catalog.some(q => slugOf(q) === t)).sort((a, b) => a[1] - b[1]).map(x => x[0])
+}
+
+function targetLabel(slug) {
+  const c = CATS.find(x => x.slug === slug);
+  if (c) return [c.ico, c.label];
+  const row = categoryRows.find(x => x.slug === slug);
+  return ['🥃', row ? row.name : slug]
+}
+
+function offerUpsell(p) {
+  const key = slugOf(p);
+  if (upsellOffered.has(key)) return;
+  const targets = upsellTargets([p]);
+  if (!targets.length) return;
+  upsellOffered.add(key);
+  upsellFlow = {
+    source: p,
+    title: p.unit === 'liter' ? 'Что возьмём к пиву?' : 'К этому обычно берут',
+    subtitle: 'Выбери раздел — можно несколько товаров'
+  };
+  resumeUpsell()
+}
+
+function resumeUpsell() {
+  if (!upsellFlow) {
+    openCart();
+    return
+  }
+  const targets = upsellTargets(upsellFlow.source ? [upsellFlow.source] : cartSources()).slice(0, 4);
+  if (!targets.length) {
+    upsellFlow = null;
+    openCart();
+    return
+  }
+  upsellTitle.textContent = upsellFlow.title;
+  upsellSub.textContent = upsellFlow.subtitle;
+  upsellList.innerHTML = targets.map(t => {
+    const [ico, label] = targetLabel(t);
+    return '<button type="button" class="up" data-cat="' + t + '"><span class="emo">' + ico + '</span><b>' + esc(label) + '</b><span class="accent">Выбрать →</span></button>'
+  }).join('');
+  upsellList.querySelectorAll('.up').forEach(b => b.onclick = () => openUpsellCategory(b.dataset.cat));
+  track('upsell_view', { productId: upsellFlow.source?.id || null, metadata: { targets } });
+  openSheet('upsellOverlay')
+}
+
+function finishUpsell(toCart) {
+  upsellFlow = null;
+  closeSheet('upsellOverlay');
+  if (toCart) openCart()
+}
+
+function openUpsellCategory(cat) {
+  closeSheet('upsellOverlay');
+  closeSheet('cartOverlay');
+  if (!upsellFlow) upsellFlow = { source: null, title: 'К этому обычно берут', subtitle: 'Выбери раздел — можно несколько товаров' };
+  upsellReturn = true;
+  upsellCategory = cat;
+  upsellCategoryTitle.textContent = targetLabel(cat)[1] + ' — выбирай сколько хочешь';
+  upsellCategoryBar.classList.remove('hidden');
+  setCategory(cat, true);
+  upsellCategoryBar.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' })
+}
+
+function finishUpsellCategory() {
+  upsellReturn = false;
+  upsellCategory = null;
+  upsellCategoryBar.classList.add('hidden');
+  renderProducts();
+  resumeUpsell()
+}
+
+// ---------- Category navigation: big tiles for the first choice, compact sticky nav afterwards.
+function renderNav() {
+  const vis = CATS.filter(c => catProducts(c.slug).length);
+  const tile = c => `<button type="button" class="tile${c.slug===currentCat?' on':''}" data-cat="${c.slug}" aria-pressed="${c.slug===currentCat}"><span class="ti" aria-hidden="true">${c.ico}</span><span class="tt"><b>${c.label}</b><small>${countLabel(c.slug, catProducts(c.slug).length)}</small></span></button>`;
+  tilesMain.innerHTML = vis.filter(c => c.main).map(tile).join('');
+  const more = vis.filter(c => !c.main);
+  tilesMore.innerHTML = more.map(tile).join('');
+  moreHead.hidden = !more.length;
+  catNav.innerHTML = vis.map(c => `<button type="button" class="chip${c.slug===currentCat?' on':''}" data-cat="${c.slug}">${c.ico} ${c.label}</button>`).join('');
+  document.querySelectorAll('.tile,#catNav .chip').forEach(b => b.onclick = () => pickCategory(b.dataset.cat))
+}
+
+function pickCategory(cat) {
+  if (upsellReturn) {
+    upsellReturn = false;
+    upsellCategory = null;
+    upsellFlow = null;
+    upsellCategoryBar.classList.add('hidden')
+  }
+  setCategory(cat);
+  catHead.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' })
+}
+
+function setCategory(cat, fromUpsell = false) {
+  currentCat = cat;
+  catPicked = true;
+  renderNav();
+  renderProducts(cat);
+  track('category_view', { metadata: { category: cat, via: fromUpsell ? 'upsell' : 'nav' } })
+}
+
+async function changeCity(id) {
+  currentCity = cities.find(x => x.id === id) || null;
+  if (!currentCity) return;
+  localStorage.setItem('pivka_city', id);
+  try {
+    const cc = await PIVKA_DB.listCityCatalog(id);
+    if (cc.length) {
+      catalog = cc.map(p => ({
+        ...p,
+        name_i18n: nameI18n[p.id] || {},
+        categories: {
+          slug: p.category_slug,
+          name: p.category_name
+        },
+        active: true,
+        stock_quantity: Number(p.available_stock || 0),
+        available_stock: Number(p.available_stock || 0)
+      }));
+      renderNav();
+      renderProducts();
+      restoreCart()
+    }
+    try {
+      bundleCatalog = await PIVKA_DB.listBundles(id);
+      syncBundle();
+      renderBundles();
+      renderCart()
+    } catch (e) {
+      console.warn(e)
+    }
+    const [links, zones] = await Promise.all([PIVKA_DB.listPaymentLinks(id), PIVKA_DB.listDeliveryZones(id)]);
+    paymentLinks.innerHTML = links.length ? links.map(x => '<a class="yellow paylink" target="_blank" rel="noopener" href="' + x.url + '">💳 ' + x.name + '</a>').join('') : '<div class="muted">Онлайн-оплата появится после подключения банка. Сейчас доступны наличные и перевод.</div>';
+    coZone.innerHTML = '<option value="">Выберите зону доставки</option>' + zones.map(z => '<option value="' + z.id + '" data-fee="' + Number(z.fee || 0) + '" data-min="' + Number(z.minimum_order || 0) + '">' + z.name + ' · ' + money(z.fee) + '</option>').join('');
+    if (zones.length === 1) {
+      coZone.value = zones[0].id
+    }
+    updateCheckoutTotal()
+  } catch (e) {
+    console.warn(e)
+  }
+}
+
+function setFulfillment(v) {
+  fulfillment = v;
+  deliveryBtn.classList.toggle('on', v === 'delivery');
+  pickupBtn.classList.toggle('on', v === 'pickup');
+  coAddress.style.display = v === 'delivery' ? 'block' : 'none';
+  coZone.style.display = v === 'delivery' ? 'block' : 'none';
+  coPickupTime.style.display = v === 'pickup' ? 'block' : 'none';
+  updateCheckoutTotal()
+}
+
+function updateCheckoutTotal() {
+  const base = orderBase();
+  const opt = coZone.options[coZone.selectedIndex];
+  const fee = fulfillment === 'delivery' && coZone.value ? Number(opt?.dataset?.fee || 0) : 0;
+  coTotal.textContent = money(base + fee);
+  checkoutNotice.style.display = fulfillment === 'delivery' ? 'block' : 'none';
+  checkoutNotice.textContent = fulfillment === 'delivery' ? (coZone.value ? 'Доставка: ' + money(fee) + (opt?.dataset?.min ? ' · Минимальный заказ ' + money(opt.dataset.min) : '') : 'Выбери зону доставки') : 'Самовывоз — без платы за доставку'
+}
+
+function openCheckout(bundle = null) {
+  checkoutNotice.style.display = 'none';
+  try {
+    const p = JSON.parse(localStorage.getItem('pivka_profile') || '{}');
+    if (!coName.value && p.name) coName.value = p.name;
+    if (!coPhone.value && p.phone) coPhone.value = p.phone;
+    if (!coAddress.value && p.address) coAddress.value = p.address
+  } catch (e) {}
+  if (bundle) checkoutBundle = bundle;
+  const items = Object.values(cart);
+  if (!checkoutBundle && !items.length) {
+    cartHint.textContent = 'Добавь товар из каталога для оформления';
+    return
+  }
+  closeSheet('cartOverlay');
+  updateCheckoutTotal();
+  coError.textContent = '';
+  track('checkout_start', { bundleId: checkoutBundle?.id || null, metadata: { total: orderBase() } });
+  openSheet('checkoutOverlay')
+}
+async function submitCheckout() {
+  coError.textContent = '';
+  if (Object.values(cart).some(x => x.p.unit === 'liter' && (x.qty < 2 || x.qty % 2 !== 0))) {
+    coError.textContent = 'Пиво заказывается кратно 2 литрам';
+    return
+  }
+  const phone = coPhone.value.trim(),
+    address = coAddress.value.trim();
+  if (phone.length < 6) {
+    coError.textContent = 'Укажи номер телефона';
+    return
+  }
+  if (fulfillment === 'delivery' && !address) {
+    coError.textContent = 'Укажи адрес доставки';
+    return
+  }
+  if (fulfillment === 'delivery' && !coZone.value) {
+    coError.textContent = 'Выбери зону доставки';
+    return
+  }
+  const zoneOpt = coZone.options[coZone.selectedIndex],
+    zoneMin = Number(zoneOpt?.dataset?.min || 20);
+  if (fulfillment === 'delivery' && orderBase() < zoneMin) {
+    coError.textContent = 'Минимальный заказ на доставку — ' + money(zoneMin);
+    return
+  }
+  if (!coAge.checked) {
+    coError.textContent = 'Подтверди, что тебе исполнилось 18 лет';
+    return
+  }
+  const items = Object.values(cart).map(x => ({
+    product_id: x.p.id,
+    quantity: x.qty
+  }));
+  submitOrder.disabled = true;
+  submitOrder.textContent = 'Создаём заказ…';
+  try {
+    try {
+      localStorage.setItem('pivka_profile', JSON.stringify({
+        name: coName.value.trim(),
+        phone,
+        address
+      }))
+    } catch (e) {}
+    const pickupText = fulfillment === 'pickup' ? 'Самовывоз через ' + coPickupTime.value + ' мин' : '';
+    const payload = {
+      name: coName.value.trim(),
+      phone,
+      fulfillment,
+      address,
+      payment: coPayment.value,
+      comment: (pickupText ? pickupText + (coComment.value.trim() ? ' | ' : '') : '') + coComment.value.trim() + (currentCity ? ' | Город: ' + currentCity.name : '') + (coZone.value && fulfillment === 'delivery' ? ' | Зона: ' + coZone.options[coZone.selectedIndex].text : ''),
+      items,
+      bundleId: checkoutBundle?.id,
+      cityId: currentCity?.id || null
+    };
+    let r;
+    if (checkoutBundle) r = await PIVKA_DB.createBundleOrder(payload);
+    else r = await PIVKA_DB.createOrder(payload);
+    const waItems = (checkoutBundle ? checkoutBundle.name + ' (' + (checkoutBundle.items || []).map(i => i.name + ' × ' + Number(i.quantity)).join(', ') + ')' + (items.length ? '\n' : '') : '') + Object.values(cart).map(x => x.p.name + ' × ' + x.qty).join('\n');
+    const waText = '🍻 НОВЫЙ ЗАКАЗ №' + r.order_number + '\n' + waItems + '\n\nСумма: ' + money(r.total) + '\nТелефон: ' + phone + '\n' + (fulfillment === 'delivery' ? 'Адрес: ' + address + '\nЗона: ' + coZone.options[coZone.selectedIndex].text : 'Самовывоз') + (fulfillment === 'pickup' ? '\nВремя: через ' + coPickupTime.value + ' мин' : '') + '\nОплата: ' + (coPayment.value === 'cash' ? 'Наличными' : 'Переводом') + (coComment.value.trim() ? '\nКомментарий: ' + coComment.value.trim() : '');
+    track('order_complete', { bundleId: checkoutBundle?.id || null, metadata: { order_number: r.order_number, total: Number(r.total) } });
+    const waUrl = 'https://wa.me/995579145634?text=' + encodeURIComponent(waText);
+    checkoutBody.innerHTML = `<div class="success"><div class="big">🍻</div><h2>Рывок принят!</h2><p class="muted">Заказ №${r.order_number}<br>Сумма: ${money(r.total)}</p><a class="yellow checkout" style="display:block;text-decoration:none" href="${waUrl}" target="_blank" rel="noopener">Отправить заказ в WhatsApp →</a><button class="skip" onclick="location.reload()">Готово</button></div>`;
+    setTimeout(() => {
+      location.href = waUrl
+    }, 350);
+    Object.keys(cart).forEach(k => delete cart[k]);
+    checkoutBundle = null;
+    try {
+      localStorage.removeItem('pivka_cart');
+      localStorage.removeItem('pivka_bundle')
+    } catch (e) {}
+    renderCart();
+    renderBundles()
+  } catch (e) {
+    coError.textContent = e.message || 'Не получилось создать заказ. Попробуй ещё раз.';
+    submitOrder.disabled = false;
+    submitOrder.textContent = 'Подтвердить заказ →'
+  }
+}
+
+function renderCatHead(cat, rows) {
+  const c = CATS.find(x => x.slug === cat);
+  catTitle.textContent = c ? c.title : (categoryRows.find(x => x.slug === cat)?.name || '');
+  let meta = countLabel(cat, rows.length);
+  if (cat === 'draft') meta += ' · ' + ['от 2 л, шаг 2 л', '2 ლ-დან, ნაბიჯი 2 ლ', '2 լ-ից, քայլը 2 լ'][LI()];
+  if (c?.group) {
+    const subs = [...new Set(rows.map(slugOf))].map(s => SUB_LABEL[s]?.[LI()]).filter(Boolean);
+    if (subs.length) meta = subs.join(' · ')
+  }
+  catMeta.textContent = meta
+}
+
+function renderProducts(filter = currentCat) {
+  currentCat = filter;
+  const known = CATS.some(c => c.slug === filter);
+  let rows = catalog.filter(p => known ? inCat(p, filter) : slugOf(p) === filter);
+  // Inside an upsell section do not offer again what is already in the cart.
+  if (upsellReturn) rows = rows.filter(p => !cart[p.id]);
+  rows.sort((a, b) => (Number(b.top_pick) - Number(a.top_pick)) || (Number(a.home_rank || 100) - Number(b.home_rank || 100)));
+  renderCatHead(filter, rows);
+  products.classList.remove('stagger');
+  products.innerHTML = rows.length ? rows.map((p, n) => {
+    const lim = p.unit === 'liter' ? 'Минимум ' + Number(p.minimum_quantity || 2) + ' л · шаг 2 л' : ALCOHOL.includes(slugOf(p)) ? '18+' : '',
+      inCart = cart[p.id]?.qty;
+    return `<div class="product" style="--i:${Math.min(n,8)}"><div class="thumb">${p.image_url?'<img src="'+esc(p.image_url)+'" alt="'+esc(pname(p))+'" loading="lazy" decoding="async" data-fallback="'+icon(p)+'" onerror="this.parentNode.textContent=this.dataset.fallback">':icon(p)}</div><div class="pinfo"><h3>${esc(pname(p))} ${p.top_pick?'<span class="tag">ТОП</span>':''}</h3>${lim?'<div class="lim">'+lim+'</div>':''}<div class="p">${p.unit==='liter'?'от '+money(p.sale_price*p.minimum_quantity):money(p.sale_price)}</div><div class="stock">${inCart?'В корзине: '+inCart+(p.unit==='liter'?unitL():''):'В наличии'}</div></div><button type="button" class="plus" data-id="${p.id}" aria-label="Добавить">+</button></div>`
+  }).join('') : '<div class="empty">' + (upsellReturn ? 'Всё из этого раздела уже в корзине' : 'В этой категории пока пусто') + '</div>';
+  if (!reducedMotion) {
+    void products.offsetWidth;
+    products.classList.add('stagger')
+  }
+  products.querySelectorAll('.plus').forEach(b => b.addEventListener('click', () => {
+    const p = catalog.find(x => String(x.id) === String(b.dataset.id));
+    if (!p) return;
+    if (p.unit === 'liter') openQty(p);
+    else add(p, 1)
+  }))
+}
+
+function restoreCart() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('pivka_cart') || '[]');
+    saved.forEach(x => {
+      const p = catalog.find(p => p.id === x.id);
+      if (p) cart[p.id] = {
+        p,
+        qty: p.unit === 'liter' ? Math.max(2, Math.floor(Number(x.qty) / 2) * 2) : Number(x.qty)
+      }
+    })
+  } catch (e) {}
+  renderCart()
+}
+
+// Compact category bar appears once the big tiles have scrolled away (under the bar itself).
+function observeNav() {
+  let ticking = false;
+  const check = () => {
+    ticking = false;
+    const r = buildSection.getBoundingClientRect();
+    catNav.classList.toggle('show', r.height > 0 && r.bottom < 90)
+  };
+  addEventListener('scroll', () => {
+    if (!ticking) {
+      ticking = true;
+      requestAnimationFrame(check)
+    }
+  }, { passive: true });
+  addEventListener('resize', check, { passive: true });
+  check()
+}
+
+function observeBundles() {
+  if (!('IntersectionObserver' in window)) {
+    track('bundle_view', { metadata: { count: bundleCatalog.length } });
+    return
+  }
+  const io = new IntersectionObserver(([e]) => {
+    if (!e.isIntersecting) return;
+    io.disconnect();
+    track('bundle_view', { metadata: { count: bundleCatalog.length } })
+  }, { threshold: .3 });
+  io.observe(bundles)
+}
+coZone.addEventListener('change', updateCheckoutTotal);
+document.addEventListener('pivka:intro-done', () => track('splash_complete'), { once: true });
+observeNav();
+(async () => {
+  track('page_view', { metadata: { lang: lang(), ref: document.referrer ? new URL(document.referrer).hostname : '' } });
+  try {
+    [catalog, bundleCatalog, giftTiers, upsellRules, cities, categoryRows] = await Promise.all([PIVKA_DB.listCatalog(), PIVKA_DB.listBundles(localStorage.getItem('pivka_city')).catch(() => []), PIVKA_DB.listGiftTiers().catch(() => []), PIVKA_DB.listUpsellRules().catch(() => []), PIVKA_DB.listCities(), PIVKA_DB.listCategories().catch(() => [])]);
+    categoryRows.forEach(c => catById[c.id] = c);
+    catalog.forEach(p => {
+      if (p.name_i18n) nameI18n[p.id] = p.name_i18n
+    });
+    citySelect.innerHTML = cities.map(c => '<option value="' + c.id + '">' + c.name + '</option>').join('');
+    const savedCity = localStorage.getItem('pivka_city');
+    currentCity = cities.find(c => c.id === savedCity) || cities[0] || null;
+    if (currentCity) {
+      citySelect.value = currentCity.id;
+      await changeCity(currentCity.id)
+    }
+    // Fallback if the categories request failed: every product already carries its category id and slug.
+    catalog.forEach(p => {
+      if (p.category_id && !catById[p.category_id]) catById[p.category_id] = { id: p.category_id, slug: slugOf(p), name: p.categories?.name || '' }
+    });
+    syncBundle();
+    renderBundles();
+    renderNav();
+    renderProducts(currentCat);
+    restoreCart();
+    observeBundles();
+    const social = new URLSearchParams(location.search).get('social');
+    if (social) openIncoming(social)
+  } catch (e) {
+    products.innerHTML = '<div class="empty">Не удалось загрузить каталог</div>';
+    console.warn(e);
+    renderCart()
+  }
+})();
+const I18N = {
+  ru: {
+    logo: 'Пивка<br><b>для рывка</b>',
+    hero: 'ВЕЧЕР НАЧИНАЕТСЯ С РЫВКА',
+    sub: 'Пиво, крепкое и закуски — быстро и без лишних поисков.',
+    build: 'Собрать рывок',
+    ready: 'Готовые наборы',
+    catalog: 'Каталог',
+    city: '📍 Город доставки',
+    trust: ['⚡ Быстрый заказ', '💵 Наличные / перевод', '🔞 Только 18+'],
+    actions: ['Угостить друга', 'Спорим на пиво?', 'Пивка PASS'],
+    cats: ['Пиво', 'Крепкий алкоголь', 'Вино', 'Рыба', 'Снеки', 'Мясные закуски', 'Шоколад', 'Сыр', 'Орехи', 'Напитки', 'Энергетики'],
+    notfound: 'Не нашли товар?',
+    tell: 'Сообщить',
+    repeat: '🔁 Повторить прошлый рывок',
+    repeatBtn: 'Повторить',
+    cart: 'Корзина пуста',
+    checkout: 'Оформить заказ →',
+    clear: 'Очистить корзину',
+    delivery: '🚗 Доставка',
+    pickup: '🏪 Самовывоз',
+    confirm: 'Подтвердить заказ →',
+    name: 'Имя',
+    phone: 'Телефон *',
+    address: 'Адрес доставки *',
+    zone: 'Выберите зону доставки',
+    comment: 'Комментарий к заказу',
+    age: 'Мне исполнилось 18 лет',
+    done: 'Готово →'
+  },
+  ka: {
+    logo: 'ლუდი<br><b>გაქანებისთვის</b>',
+    hero: 'საღამო იწყება კარგი შეკვეთით',
+    sub: 'ლუდი, ძლიერი ალკოჰოლი და მისაყოლებელი — სწრაფად და მარტივად.',
+    build: 'შეკვეთის აწყობა',
+    ready: 'მზა ნაკრებები',
+    catalog: 'კატალოგი',
+    city: '📍 მიწოდების ქალაქი',
+    trust: ['⚡ სწრაფი შეკვეთა', '💵 ნაღდი / გადარიცხვა', '🔞 მხოლოდ 18+'],
+    actions: ['გაუმასპინძლდი მეგობარს', 'დადე ფსონი ლუდზე', 'ლუდის PASS'],
+    cats: ['ლუდი', 'ძლიერი ალკოჰოლი', 'ღვინო', 'თევზი', 'სნექები', 'ხორცის მისაყოლებელი', 'შოკოლადი', 'ყველი', 'თხილეული', 'სასმელები', 'ენერგეტიკული'],
+    notfound: 'ვერ იპოვე პროდუქტი?',
+    tell: 'შეგვატყობინე',
+    repeat: '🔁 გაიმეორე წინა შეკვეთა',
+    repeatBtn: 'გამეორება',
+    cart: 'კალათა ცარიელია',
+    checkout: 'შეკვეთის გაფორმება →',
+    clear: 'კალათის გასუფთავება',
+    delivery: '🚗 მიტანა',
+    pickup: '🏪 თვითგატანა',
+    confirm: 'შეკვეთის დადასტურება →',
+    name: 'სახელი',
+    phone: 'ტელეფონი *',
+    address: 'მიტანის მისამართი *',
+    zone: 'აირჩიე მიტანის ზონა',
+    comment: 'კომენტარი შეკვეთაზე',
+    age: '18 წლის ან უფროსი ვარ',
+    done: 'მზადაა →'
+  },
+  hy: {
+    logo: 'Գարեջուր<br><b>լավ երեկոյի համար</b>',
+    hero: 'ԵՐԵԿՈՆ ՍԿՍՎՈՒՄ Է ԼԱՎ ՊԱՏՎԵՐԻՑ',
+    sub: 'Գարեջուր, թունդ ալկոհոլ և խորտիկներ՝ արագ և առանց ավելորդ փնտրտուքի։',
+    build: 'Հավաքել պատվերը',
+    ready: 'Պատրաստի հավաքածուներ',
+    catalog: 'Կատալոգ',
+    city: '📍 Առաքման քաղաք',
+    trust: ['⚡ Արագ պատվեր', '💵 Կանխիկ / փոխանցում', '🔞 Միայն 18+'],
+    actions: ['Հյուրասիրել ընկերոջը', 'Գրազ գարեջրի վրա', 'Գարեջրի PASS'],
+    cats: ['Գարեջուր', 'Թունդ ալկոհոլ', 'Գինի', 'Ձուկ', 'Խորտիկներ', 'Մսային խորտիկներ', 'Շոկոլադ', 'Պանիր', 'Ընկույզներ', 'Ըմպելիքներ', 'Էներգետիկ'],
+    notfound: 'Չգտա՞ք ապրանքը',
+    tell: 'Հայտնել',
+    repeat: '🔁 Կրկնել նախորդ պատվերը',
+    repeatBtn: 'Կրկնել',
+    cart: 'Զամբյուղը դատարկ է',
+    checkout: 'Ձևակերպել պատվերը →',
+    clear: 'Մաքրել զամբյուղը',
+    delivery: '🚗 Առաքում',
+    pickup: '🏪 Ինքնավերցում',
+    confirm: 'Հաստատել պատվերը →',
+    name: 'Անուն',
+    phone: 'Հեռախոս *',
+    address: 'Առաքման հասցե *',
+    zone: 'Ընտրեք առաքման գոտին',
+    comment: 'Մեկնաբանություն պատվերին',
+    age: 'Ես 18 տարեկան կամ ավելի եմ',
+    done: 'Պատրաստ է →'
+  }
+};
+
+function setLang(lang) {
+  try {
+    localStorage.setItem('pivka_lang', lang)
+  } catch (e) {}
+  document.documentElement.lang = lang;
+  document.querySelectorAll('.langBtn').forEach(x => {
+    const on = x.dataset.lang === lang;
+    x.classList.toggle('active', on);
+    x.setAttribute('aria-pressed', String(on))
+  });
+  const t = I18N[lang] || I18N.ru;
+  const $ = s => document.querySelector(s);
+  const logo = $('.logo');
+  if (logo) logo.innerHTML = t.logo;
+  document.querySelectorAll('.trust div').forEach((x, i) => {
+    if (t.trust[i]) x.textContent = t.trust[i]
+  });
+  document.querySelectorAll('.action').forEach((x, i) => {
+    const sp = x.querySelector('span');
+    if (t.actions[i]) x.innerHTML = (sp ? sp.outerHTML : '') + t.actions[i]
+  });
+  const nf = $('#notFound b'), nfb = $('#notFound button');
+  if (nf) nf.textContent = t.notfound;
+  if (nfb) nfb.textContent = t.tell;
+  const rep = $('#repeatCard b'), repb = $('#repeatCard button');
+  if (rep) rep.textContent = t.repeat;
+  if (repb) repb.textContent = t.repeatBtn;
+  if ((typeof cart === 'undefined' || !Object.keys(cart).length) && (typeof checkoutBundle === 'undefined' || !checkoutBundle)) cartCount.textContent = '🛒 ' + t.cart;
+  const clr = $('#clearCartBtn'), ord = $('#cartOverlay .orderGreen');
+  if (clr) clr.textContent = t.clear;
+  if (ord) ord.textContent = t.checkout;
+  const set = (id, prop, v) => {
+    const el = document.getElementById(id);
+    if (el) el[prop] = v
+  };
+  set('deliveryBtn', 'textContent', t.delivery);
+  set('pickupBtn', 'textContent', t.pickup);
+  set('submitOrder', 'textContent', t.confirm);
+  set('coName', 'placeholder', t.name);
+  set('coPhone', 'placeholder', t.phone);
+  set('coAddress', 'placeholder', t.address);
+  set('coComment', 'placeholder', t.comment);
+  const ageLabel = $('#coAge')?.parentElement?.querySelector('span');
+  if (ageLabel) ageLabel.textContent = t.age;
+  const done = $('#upsellCategoryBar button');
+  if (done) done.textContent = t.done;
+  if (typeof catalog !== 'undefined' && catalog.length) {
+    renderNav();
+    renderProducts(currentCat);
+    renderBundles();
+    renderCart()
+  }
+}
+document.addEventListener('DOMContentLoaded', () => {
+  let l = 'ru';
+  try {
+    l = localStorage.getItem('pivka_lang') || 'ru'
+  } catch (e) {}
+  setLang(l)
+});
