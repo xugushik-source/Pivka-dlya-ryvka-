@@ -152,6 +152,7 @@ function localized(text, lang) {
   let m;
   if ((m = trimmed.match(/^(\d+(?:[.,]\d+)?) л$/))) return text.replace(trimmed, m[1]+(ka?' ლ':' լ'));
   if ((m = trimmed.match(/^Минимум (\d+(?:[.,]\d+)?) л$/))) return text.replace(trimmed, (ka?'მინიმუმ ':'Առնվազն ')+m[1]+(ka?' ლ':' լ'));
+  if ((m = trimmed.match(/^([\d.,]+ ₾) за 1 л$/))) return text.replace(trimmed, (ka?'1 ლიტრი — ':'1 լիտրը՝ ')+m[1]);
   if ((m = trimmed.match(/^от ([\d.,]+ ₾)$/))) return text.replace(trimmed, (ka?'დან ':'սկսած ')+m[1]);
   if ((m = trimmed.match(/^Буду через (\d+) минут$/))) return text.replace(trimmed, (ka?'მოვალ ':'Կգամ ')+m[1]+(ka?' წუთში':' րոպեից'));
   if ((m = trimmed.match(/^Буду через (.+)$/))) return text.replace(trimmed, (ka?'მოვალ ':'Կգամ ')+m[1].replace('часа',ka?'საათში':'ժամից').replace('час',ka?'საათში':'ժամից'));
