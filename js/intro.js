@@ -1,6 +1,6 @@
 /* Splash curtain + storefront reveals.
    Same model as the Marianna project (IntroProvider/SplashScreen): hold → revealing → done.
-   HOLD 2400 ms / REVEAL 800 ms (≈3 s in total); reduced motion 200 / 250 ms. Only transform/opacity are animated. */
+   HOLD 7400 ms / REVEAL 800 ms: each message stays ~3 s so it can be read; «Открыть магазин» skips; reduced motion 200 / 250 ms. Only transform/opacity are animated. */
 (() => {
   const root = document.documentElement;
   const intro = document.getElementById('brandIntro');
@@ -28,7 +28,7 @@
   try { seen = sessionStorage.getItem('pivka_intro_seen') === '1'; sessionStorage.setItem('pivka_intro_seen', '1'); } catch (e) {}
   // Full theatrical intro once per browser session; reloads (e.g. after checkout) use the short timing.
   const short = reduced || seen;
-  const HOLD_MS = short ? 200 : 2400;
+  const HOLD_MS = reduced ? 1800 : seen ? 2200 : 7400;
   if (short) root.classList.add('intro-short');
   const REVEAL_MS = short ? 250 : 800;
   root.style.setProperty('--intro-hold', HOLD_MS + 'ms');
