@@ -109,29 +109,43 @@ async function sendRequest() {
   }
 }
 
+let repeatItems = [];
 function openRepeat() {
-  repeatOverlay.classList.add('on')
+  repeatOverlay.classList.add('on');
+  repeatResult.innerHTML = '';
+  try {
+    const phone = JSON.parse(localStorage.getItem('pivka_profile') || '{}').phone;
+    if (phone && !repeatPhone.value) repeatPhone.value = phone
+  } catch (e) {}
+  if (repeatPhone.value.trim()) findRepeat()
 }
 async function findRepeat() {
+  const phone = repeatPhone.value.trim();
+  if (phone.replace(/\D/g, '').length < 9) {
+    repeatResult.innerHTML = '<div class="error">Введите номер полностью, например 591 24 40 75</div>';
+    return
+  }
+  repeatResult.innerHTML = '<div class="muted">Ищем…</div>';
   try {
-    const r = await PIVKA_DB.getRepeatOrder(repeatPhone.value.trim());
+    const r = await retry(() => PIVKA_DB.getRepeatOrder(phone));
     if (!r.found) {
-      repeatBody.innerHTML = '<div class="empty">Прошлый заказ не найден</div>';
+      repeatResult.innerHTML = '<div class="empty">Прошлый заказ с этим номером не найден. Проверьте номер — можно без +995.</div>';
       return
     }
+    repeatItems = r.items || [];
     const unavailable = (r.items || []).filter(i => !i.active || Number(i.available) < Number(i.quantity));
-    repeatBody.innerHTML = '<h3>Заказ №' + r.order_number + '</h3>' + (r.items || []).map(i => '<div class="line row"><span>' + i.name + ' × ' + i.quantity + '</span><b>' + money(Number(i.current_price) * Number(i.quantity)) + '</b></div>').join('') + (unavailable.length ? '<div class="error">Некоторых товаров сейчас не хватает. Добавим доступные, остальные можно заменить вручную.</div>' : '<button class="yellow checkout" onclick=\'applyRepeat(' + JSON.stringify(JSON.stringify(r.items)) + ')\'>Добавить всё в корзину →</button>')
+    repeatResult.innerHTML = '<h3>Заказ №' + r.order_number + '</h3>' + (r.items || []).map(i => '<div class="line row"><span>' + esc(i.name) + ' × ' + i.quantity + '</span><b>' + money(Number(i.current_price) * Number(i.quantity)) + '</b></div>').join('') + (unavailable.length ? '<div class="error">Некоторых товаров сейчас не хватает. Добавим доступные, остальные можно заменить вручную.</div>' : '') + '<button class="yellow checkout" onclick="applyRepeat()">Добавить в корзину →</button>'
   } catch (e) {
-    alert(e.message)
+    repeatResult.innerHTML = '<div class="error">Не получилось найти заказ — проверьте интернет и попробуйте ещё раз.</div>'
   }
 }
 
-function applyRepeat(raw) {
-  const items = JSON.parse(raw);
+function applyRepeat() {
+  const items = repeatItems;
   items.forEach(i => {
     const p = catalog.find(x => x.id === i.product_id);
-    if (!p) return;
-    if (p.active && Number(p.stock_quantity) >= Number(i.quantity)) PIVKA_DB.trackEvent('add_to_cart', {
+    if (!p || !p.active) return;
+    PIVKA_DB.trackEvent('add_to_cart', {
       productId: p.id
     });
     cart[p.id] = {
@@ -969,9 +983,6 @@ function observeBundles() {
 coZone.addEventListener('change', () => { updateCheckoutTotal(); refreshDeliveryQuote() });
 coPhone.addEventListener('change', refreshDeliveryQuote);
 document.addEventListener('pivka:intro-done', () => track('splash_complete'), { once: true });
-try {
-  if (JSON.parse(localStorage.getItem('pivka_profile') || '{}').phone) repeatQuick.classList.remove('hidden')
-} catch (e) {}
 observeNav();
 (async () => {
   track('page_view', { metadata: { lang: lang(), ref: document.referrer ? new URL(document.referrer).hostname : '' } });
