@@ -738,7 +738,7 @@ async function refreshDeliveryQuote() {
   if (!checkoutFormAlive()) return;
   const seq = ++quoteSeq;
   try {
-    const q = await PIVKA_DB.deliveryQuote(fulfillment === 'delivery' ? coZone.value || null : null, coPhone.value.trim() || null, fulfillment);
+    const q = await retry(() => PIVKA_DB.deliveryQuote(fulfillment === 'delivery' ? coZone.value || null : null, coPhone.value.trim() || null, fulfillment));
     if (seq !== quoteSeq || !checkoutFormAlive()) return;
     deliveryQuoteState = { fee: coZone.value || fulfillment !== 'delivery' || q.mode !== 'CHARGE' ? Number(q.fee) : null, reason: q.reason, mode: q.mode || 'CHARGE' }
   } catch (e) {
@@ -793,7 +793,10 @@ function openCheckout(bundle = null) {
     return
   }
   closeSheet('cartOverlay');
+  // Zones failed to load earlier (bad network) — try again, otherwise the customer cannot pick one.
+  if (coZone.options.length < 2 && currentCity) changeCity(currentCity.id);
   updateCheckoutTotal();
+  refreshDeliveryQuote();
   coError.textContent = '';
   track('checkout_start', { bundleId: checkoutBundle?.id || null, metadata: { total: orderBase() } });
   openSheet('checkoutOverlay')
