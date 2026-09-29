@@ -49,7 +49,7 @@ html.intro-lock,html.intro-lock body{overflow:hidden;overscroll-behavior:none}
 .brand-intro__title .mask>span{display:inline-block;animation:mask-up .9s cubic-bezier(.16,1,.3,1) both}
 .brand-intro__title .l2{animation-delay:.12s}
 .stage{animation:stage-in .7s cubic-bezier(.16,1,.3,1) both}
-.s3{animation-delay:.6s}.s4{animation-delay:1s}.s5{animation-delay:1.3s}
+.s5{animation-delay:.35s}
 @keyframes mask-up{from{clip-path:inset(100% 0 0 0);transform:translate3d(0,28px,0)}to{clip-path:inset(0 0 0 0);transform:none}}
 @keyframes stage-in{from{opacity:0;transform:translate3d(0,14px,0)}to{opacity:1;transform:none}}
 html.intro-short .brand-intro .mask>span,html.intro-short .brand-intro .stage{animation-duration:.25s;animation-delay:0s}
@@ -66,3 +66,16 @@ html.intro-short .brand-intro .mask>span,html.intro-short .brand-intro .stage{an
   .js .app.pre-enter .sec-title .mask>span,.js .app .reveal:not(.in) .sec-title .mask>span{clip-path:none;transform:none}
   .js .app .reveal:not(.in) .tile,.js .app .reveal:not(.in) .card.bundle,.js .app.pre-enter .card.bundle{opacity:1;transform:none}
 }
+
+/* 3-second story: logo (0–0.9 s) → «Не думай, что брать» (0.9–1.7 s) → «Угости друга • Спорим на пиво?» (1.7 s →) → shop opens. */
+.intro-msgs{position:relative;min-height:5.4em;margin:6px 0 20px;max-width:24em}
+.intro-msg{position:absolute;left:0;right:0;top:0;margin:0;font-size:clamp(18px,4.8vw,26px);line-height:1.25;color:#efe9dd;opacity:0}
+.intro-msg b{display:block;color:#fff;font-weight:1000;font-size:1.08em}
+.intro-msg.m1{animation:msg-life .95s .85s both}
+.intro-msg.m2{animation:msg-in .55s 1.7s both}
+@keyframes msg-life{0%{opacity:0;transform:translate3d(0,16px,0)}22%{opacity:1;transform:none}78%{opacity:1;transform:none}100%{opacity:0;transform:translate3d(0,-14px,0)}}
+@keyframes msg-in{from{opacity:0;transform:translate3d(0,16px,0)}to{opacity:1;transform:none}}
+html.intro-short .intro-msg.m1{display:none}
+html.intro-short .intro-msg.m2{animation-duration:.25s;animation-delay:0s}
+@media(prefers-reduced-motion:reduce){.intro-msg.m1{display:none}.intro-msg.m2{animation:none;opacity:1}}
+@media(max-height:580px){.intro-msgs{min-height:4.6em;margin-bottom:10px}}
