@@ -1,20 +1,22 @@
 /* Splash curtain + storefront reveals.
    Same model as the Marianna project (IntroProvider/SplashScreen): hold → revealing → done.
-   HOLD 3000 ms / REVEAL 1000 ms; reduced motion 200 / 250 ms. Only transform/opacity are animated. */
+   HOLD 2800 ms / REVEAL 1000 ms; reduced motion 200 / 250 ms. Only transform/opacity are animated. */
 (() => {
   const root = document.documentElement;
   const intro = document.getElementById('brandIntro');
   const order = document.getElementById('introOrder');
   const copy = {
-    ru: ['ПИВО • ЗАКУСКИ • ДОСТАВКА', 'СДЕЛАТЬ ЗАКАЗ', 'Нужна помощь с заказом?'],
-    ka: ['ლუდი • მისაყოლებელი • მიტანა', 'შეკვეთის გაკეთება', 'დახმარება გჭირდებათ შეკვეთაში?'],
-    hy: ['ԳԱՐԵՋՈՒՐ • ԽՈՐՏԻԿՆԵՐ • ԱՌԱՔՈՒՄ', 'ԿԱՏԱՐԵԼ ՊԱՏՎԵՐ', 'Օգնությո՞ւն է պետք պատվերի հարցում։']
+    ru: ['Пиво, крепкое и закуски с доставкой', 'СДЕЛАТЬ ЗАКАЗ', 'Нужна помощь с заказом?', 'Выбирай сам или бери готовый рывок'],
+    ka: ['ლუდი, ძლიერი სასმელი და მისაყოლებელი მიტანით', 'შეკვეთის გაკეთება', 'დახმარება გჭირდებათ შეკვეთაში?', 'აირჩიე თავად ან აიღე მზა ნაკრები'],
+    hy: ['Գարեջուր, թունդ խմիչք և խորտիկներ՝ առաքմամբ', 'ԿԱՏԱՐԵԼ ՊԱՏՎԵՐ', 'Օգնությո՞ւն է պետք պատվերի հարցում։', 'Ընտրիր ինքդ կամ վերցրու պատրաստի հավաքածու']
   };
   function update() {
     const t = copy[root.lang] || copy.ru;
     document.getElementById('introTagline').textContent = t[0];
     order.textContent = t[1];
     document.getElementById('checkoutHelp').textContent = t[2];
+    const how = document.getElementById('introHow');
+    if (how) how.textContent = t[3];
   }
   const setLang = window.setLang;
   window.setLang = function(lang) { setLang(lang); update(); };
@@ -26,7 +28,8 @@
   try { seen = sessionStorage.getItem('pivka_intro_seen') === '1'; sessionStorage.setItem('pivka_intro_seen', '1'); } catch (e) {}
   // Full theatrical intro once per browser session; reloads (e.g. after checkout) use the short timing.
   const short = reduced || seen;
-  const HOLD_MS = short ? 200 : 3000;
+  const HOLD_MS = short ? 200 : 2800;
+  if (short) root.classList.add('intro-short');
   const REVEAL_MS = short ? 250 : 1000;
   root.style.setProperty('--intro-hold', HOLD_MS + 'ms');
   root.style.setProperty('--intro-reveal', REVEAL_MS + 'ms');
@@ -37,7 +40,7 @@
 
   function setupReveals() {
     if (reduced || !('IntersectionObserver' in window)) return;
-    const targets = [...store.querySelectorAll('.gift,.actions,.section,#bundles,.cats,#products,#products + .card')];
+    const targets = [...store.querySelectorAll('.block,.gift,.notfound,.secondary')];
     const vh = innerHeight || root.clientHeight;
     const io = new IntersectionObserver(entries => entries.forEach(e => {
       if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
@@ -57,8 +60,9 @@
     intro.setAttribute('aria-hidden', 'true');
     root.classList.remove('intro-lock');
     behind.forEach(el => el.removeAttribute('inert'));
+    document.dispatchEvent(new Event('pivka:intro-done'));
     if (scrollAfter) {
-      const target = store.querySelector('.gift') || store;
+      const target = document.getElementById('bundlesSection') || store;
       target.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
     }
   }
