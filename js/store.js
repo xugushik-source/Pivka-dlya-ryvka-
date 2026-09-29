@@ -162,7 +162,7 @@ function openSocial(type) {
   socialTitle.textContent = type === 'TREAT' ? '🍻 Угостить друга' : '🏆 Спорим на пиво?';
   socialSub.textContent = type === 'TREAT' ? 'Выбери угощение и отправь ссылку другу' : 'Выбери ставку и отправь ссылку сопернику';
   socialBody.innerHTML = '<input id="socialName" placeholder="Твоё имя"><input id="socialPhone" inputmode="tel" autocomplete="tel" placeholder="Твой телефон *"><select id="socialStake"></select><textarea id="socialMessage" placeholder="Сообщение другу"></textarea><div class="error" id="socialError"></div><button class="yellow checkout" onclick="createSocial()">Создать ссылку →</button>';
-  const opts = bundleCatalog.filter(b => b.available !== false).map(b => '<option value="b:' + b.id + '">' + esc(b.name) + ' — ' + money(b.price) + '</option>');
+  const opts = bundleCatalog.filter(b => b.available !== false).map(b => '<option value="b:' + b.id + '">' + esc(tr(b.name)) + ' — ' + money(b.price) + '</option>');
   catalog.filter(p => p.unit === 'liter').forEach(p => opts.push('<option value="p:' + p.id + '">' + esc(pname(p)) + ' — ' + money(Number(p.sale_price) * Number(p.minimum_quantity || 2)) + '</option>'));
   socialStake.innerHTML = opts.length ? opts.join('') : '<option value="">Нет доступных ставок</option>';
   const prof = JSON.parse(localStorage.getItem('pivka_profile') || '{}');
@@ -468,7 +468,7 @@ function deliveryHint() {
 
 function openCart() {
   const items = Object.values(cart);
-  const bundleLine = checkoutBundle ? '<div class="line row"><div><b>🔥 ' + esc(checkoutBundle.name) + '</b><div class="muted">Готовый рывок · цена уже со скидкой</div><div class="muted">' + bundleItemsText(checkoutBundle) + '</div></div><div class="step"><b style="white-space:nowrap">' + money(checkoutBundle.price) + '</b><button type="button" aria-label="Убрать рывок" onclick="removeBundle()">×</button></div></div>' : '';
+  const bundleLine = checkoutBundle ? '<div class="line row"><div><b>🔥 ' + esc(tr(checkoutBundle.name)) + '</b><div class="muted">Готовый рывок · цена уже со скидкой</div><div class="muted">' + bundleItemsText(checkoutBundle) + '</div></div><div class="step"><b style="white-space:nowrap">' + money(checkoutBundle.price) + '</b><button type="button" aria-label="Убрать рывок" onclick="removeBundle()">×</button></div></div>' : '';
   cartLines.innerHTML = bundleLine + (items.length ? items.map(x => `<div class="line row"><div><b>${esc(pname(x.p))}</b><div class="muted">${money(x.p.sale_price)} × ${x.qty}${x.p.unit==='liter'?unitL():''}</div></div><div class="step"><button type="button" onclick="change('${x.p.id}',-1)">−</button><b>${x.qty}</b><button type="button" onclick="change('${x.p.id}',1)">+</button></div></div>`).join('') : (checkoutBundle ? '' : '<div class="empty">Пока пусто. Добавь что-нибудь вкусное.</div>'));
   const recs = (items.length || checkoutBundle) ? upsellTargets(cartSources()).slice(0, 3) : [];
   cartRecs.innerHTML = recs.length ? '<div class="bt">К этому обычно берут</div><div class="recs">' + recs.map(t => {
@@ -1094,10 +1094,14 @@ function setLang(lang) {
     renderCart()
   }
 }
-document.addEventListener('DOMContentLoaded', () => {
-  let l = 'ru';
+// Saved choice first; otherwise the phone's language (a Georgian phone opens in Georgian).
+function detectLang() {
   try {
-    l = localStorage.getItem('pivka_lang') || 'ru'
+    const saved = localStorage.getItem('pivka_lang');
+    if (['ru', 'ka', 'hy'].includes(saved)) return saved
   } catch (e) {}
-  setLang(l)
-});
+  const nav = (navigator.languages || [navigator.language || '']).map(x => String(x).slice(0, 2).toLowerCase());
+  return nav.find(x => ['ka', 'hy', 'ru'].includes(x)) || 'ru'
+}
+document.documentElement.lang = detectLang();
+document.addEventListener('DOMContentLoaded', () => setLang(detectLang()));
