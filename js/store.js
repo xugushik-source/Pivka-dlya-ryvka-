@@ -468,6 +468,7 @@ function deliveryHint() {
   if (!checkoutFormAlive()) return '';
   if (deliveryQuoteState.mode === 'HIDDEN') return '';
   if (deliveryQuoteState.mode === 'FREE') return 'Доставка бесплатно';
+  return orderBase() >= 40 ? 'Доставка бесплатно — заказ от 40 ₾' : 'Доставка 5 ₾ · от 40 ₾ — бесплатно';
   const fees = [...coZone.options].map(o => Number(o.dataset.fee)).filter(n => !isNaN(n));
   return fees.length ? 'Доставка от ' + money(Math.min(...fees)) + ' · самовывоз бесплатно' : ''
 }
@@ -773,7 +774,7 @@ function updateCheckoutTotal() {
   coTotal.textContent = money(base + fee);
   checkoutNotice.style.display = fulfillment === 'delivery' ? 'block' : 'none';
   const min = opt?.dataset?.min && Number(opt.dataset.min) ? ' · Минимальный заказ ' + money(opt.dataset.min) : '';
-  const feeText = deliveryQuoteState.reason === 'PASS' ? 'Доставка: 0 ₾ — PASS' : mode === 'HIDDEN' ? '' : mode === 'FREE' ? 'Доставка бесплатно' : 'Доставка: ' + money(fee);
+  const feeText = deliveryQuoteState.reason === 'FREE_FROM' ? 'Доставка бесплатно — заказ от 40 ₾' : deliveryQuoteState.reason === 'ZONE' && fee > 0 ? 'Доставка: ' + money(fee) + ' · от 40 ₾ — бесплатно' : deliveryQuoteState.reason === 'PASS' ? 'Доставка: 0 ₾ — PASS' : mode === 'HIDDEN' ? '' : mode === 'FREE' ? 'Доставка бесплатно' : 'Доставка: ' + money(fee);
   checkoutNotice.textContent = fulfillment === 'delivery' ? (coZone.value ? (feeText + min).replace(/^ · /, '') || 'Доставка' : 'Выбери зону доставки') : 'Самовывоз — без платы за доставку'
 }
 
@@ -818,7 +819,7 @@ async function submitCheckout() {
     return
   }
   const zoneOpt = coZone.options[coZone.selectedIndex],
-    zoneMin = Number(zoneOpt?.dataset?.min || 20);
+    zoneMin = Number(zoneOpt?.dataset?.min ?? 0);
   if (fulfillment === 'delivery' && orderBase() < zoneMin) {
     coError.textContent = 'Минимальный заказ на доставку — ' + money(zoneMin);
     return
