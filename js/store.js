@@ -413,7 +413,8 @@ function renderCart() {
   cartCount.textContent = (count || bundleCount) ? '🛒 ' + (count + bundleCount) + ' поз.' : '🛒 Корзина пуста';
   cartTotal.textContent = money(total) + ' →';
   document.querySelector('.cart').classList.toggle('show', count > 0 || bundleCount > 0);
-  renderGift(total);
+  // A Рывок has its own discount and does not count toward the gift — only extra products do.
+  renderGift(totals());
   try {
     localStorage.setItem('pivka_cart', JSON.stringify(items.map(x => ({
       id: x.p.id,
@@ -469,11 +470,12 @@ function renderGift(total) {
     const list = boostCandidates(Number(next.threshold) - total);
     if (list.length) boost = '<div class="boost"><div class="bt">Добрать быстрее</div>' + list.map(p => `<button type="button" class="boostItem" onclick="boostAdd('${p.id}')"><span>${esc(pname(p))}</span><b>${money(p.sale_price)} +</b></button>`).join('') + '</div>'
   }
+  const bundleNote = checkoutBundle ? '<div class="muted gnote">Рывок в подарок не считается — только товары сверху</div>' : '';
   const marks = '<span>0 ₾</span>' + giftTiers.map(x => '<span>' + money(x.threshold) + '</span>').join('');
   barGift.textContent = total > 0 ? (next ? '🎁 До подарка осталось ' + money(Number(next.threshold) - total) : '🎁 Подарок открыт: ' + (pname(won?.products) || '')) : '';
   boxes.forEach(x => {
     x.hidden = false;
-    x.innerHTML = '<strong class="gtext">' + esc(text) + '</strong><div class="bar"><i style="width:' + width + '%"></i></div><div class="marks">' + marks + '</div>' + boost
+    x.innerHTML = '<strong class="gtext">' + esc(text) + '</strong><div class="bar"><i style="width:' + width + '%"></i></div><div class="marks">' + marks + '</div>' + bundleNote + boost
   })
 }
 
