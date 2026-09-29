@@ -154,7 +154,7 @@ async function activatePass() {
   }
   try {
     const r = await PIVKA_DB.startPass(passName.value.trim(), passPhone.value.trim());
-    passBody.innerHTML = '<div class="success"><div class="big">👑</div><h2>PASS подготовлен</h2><p class="muted">3 ₾ / месяц. Подписка активируется после подтверждённой оплаты.</p></div>'
+    passBody.innerHTML = '<div class="success"><div class="big">👑</div><h2>PASS подготовлен</h2><p class="muted">10 ₾ / месяц. Оплатите переводом — после оплаты мы включим PASS, и доставка с 12:00 до 22:00 станет бесплатной.</p>' + [...paymentLinks.querySelectorAll('a')].map(x => x.outerHTML).join('') + '</div>'
   } catch (e) {
     alert(e.message)
   }
@@ -465,6 +465,9 @@ function renderGift(total) {
 
 // ---------- Cart
 function deliveryHint() {
+  if (!checkoutFormAlive()) return '';
+  if (deliveryQuoteState.mode === 'HIDDEN') return '';
+  if (deliveryQuoteState.mode === 'FREE') return 'Доставка бесплатно';
   const fees = [...coZone.options].map(o => Number(o.dataset.fee)).filter(n => !isNaN(n));
   return fees.length ? 'Доставка от ' + money(Math.min(...fees)) + ' · самовывоз бесплатно' : ''
 }
@@ -702,7 +705,8 @@ async function changeCity(id) {
     if (zones.length === 1) {
       coZone.value = zones[0].id
     }
-    updateCheckoutTotal()
+    updateCheckoutTotal();
+    refreshDeliveryQuote()
   } catch (e) {
     console.warn(e)
   }
@@ -720,16 +724,57 @@ function setFulfillment(v) {
   coAddress.style.display = v === 'delivery' ? 'block' : 'none';
   coZone.style.display = v === 'delivery' ? 'block' : 'none';
   coPickupTime.style.display = v === 'pickup' ? 'block' : 'none';
+  updateCheckoutTotal();
+  refreshDeliveryQuote()
+}
+
+// Delivery fee comes from the server rule (zone, owner switch, PASS 12:00–22:00); the zone fee is only a fallback.
+let deliveryQuoteState = { fee: null, reason: null, mode: 'CHARGE' }, quoteSeq = 0;
+// After a successful order the form is replaced by the confirmation screen.
+const checkoutFormAlive = () => !!document.getElementById('coZone');
+
+async function refreshDeliveryQuote() {
+  if (!checkoutFormAlive()) return;
+  const seq = ++quoteSeq;
+  try {
+    const q = await PIVKA_DB.deliveryQuote(fulfillment === 'delivery' ? coZone.value || null : null, coPhone.value.trim() || null, fulfillment);
+    if (seq !== quoteSeq || !checkoutFormAlive()) return;
+    deliveryQuoteState = { fee: coZone.value || fulfillment !== 'delivery' || q.mode !== 'CHARGE' ? Number(q.fee) : null, reason: q.reason, mode: q.mode || 'CHARGE' }
+  } catch (e) {
+    deliveryQuoteState = { fee: null, reason: null, mode: deliveryQuoteState.mode }
+  }
+  if (!checkoutFormAlive()) return;
+  applyDeliveryMode();
   updateCheckoutTotal()
 }
 
+function applyDeliveryMode() {
+  const mode = deliveryQuoteState.mode;
+  [...coZone.options].forEach(o => {
+    if (!o.value) return;
+    o.dataset.label = o.dataset.label || o.textContent.split(' · ')[0];
+    o.textContent = mode === 'HIDDEN' ? o.dataset.label : mode === 'FREE' ? o.dataset.label + ' · бесплатно' : o.dataset.label + ' · ' + money(o.dataset.fee)
+  })
+}
+
+function currentDeliveryFee() {
+  if (fulfillment !== 'delivery' || !coZone.value) return 0;
+  if (deliveryQuoteState.fee !== null) return deliveryQuoteState.fee;
+  const opt = coZone.options[coZone.selectedIndex];
+  return deliveryQuoteState.mode === 'CHARGE' ? Number(opt?.dataset?.fee || 0) : 0
+}
+
 function updateCheckoutTotal() {
+  if (!checkoutFormAlive()) return;
   const base = orderBase();
   const opt = coZone.options[coZone.selectedIndex];
-  const fee = fulfillment === 'delivery' && coZone.value ? Number(opt?.dataset?.fee || 0) : 0;
+  const fee = currentDeliveryFee();
+  const mode = deliveryQuoteState.mode;
   coTotal.textContent = money(base + fee);
   checkoutNotice.style.display = fulfillment === 'delivery' ? 'block' : 'none';
-  checkoutNotice.textContent = fulfillment === 'delivery' ? (coZone.value ? 'Доставка: ' + money(fee) + (opt?.dataset?.min ? ' · Минимальный заказ ' + money(opt.dataset.min) : '') : 'Выбери зону доставки') : 'Самовывоз — без платы за доставку'
+  const min = opt?.dataset?.min && Number(opt.dataset.min) ? ' · Минимальный заказ ' + money(opt.dataset.min) : '';
+  const feeText = deliveryQuoteState.reason === 'PASS' ? 'Доставка: 0 ₾ — PASS' : mode === 'HIDDEN' ? '' : mode === 'FREE' ? 'Доставка бесплатно' : 'Доставка: ' + money(fee);
+  checkoutNotice.textContent = fulfillment === 'delivery' ? (coZone.value ? (feeText + min).replace(/^ · /, '') || 'Доставка' : 'Выбери зону доставки') : 'Самовывоз — без платы за доставку'
 }
 
 function openCheckout(bundle = null) {
@@ -806,13 +851,14 @@ async function submitCheckout() {
       comment: (pickupText ? pickupText + (coComment.value.trim() ? ' | ' : '') : '') + coComment.value.trim() + (currentCity ? ' | Город: ' + currentCity.name : '') + (coZone.value && fulfillment === 'delivery' ? ' | Зона: ' + coZone.options[coZone.selectedIndex].text : ''),
       items,
       bundleId: checkoutBundle?.id,
-      cityId: currentCity?.id || null
+      cityId: currentCity?.id || null,
+      zoneId: fulfillment === 'delivery' ? coZone.value || null : null
     };
     let r;
     if (checkoutBundle) r = await PIVKA_DB.createBundleOrder(payload);
     else r = await PIVKA_DB.createOrder(payload);
     const waItems = (checkoutBundle ? checkoutBundle.name + ' (' + (checkoutBundle.items || []).map(i => i.name + ' × ' + Number(i.quantity)).join(', ') + ')' + (items.length ? '\n' : '') : '') + Object.values(cart).map(x => x.p.name + ' × ' + x.qty).join('\n');
-    const waText = '🍻 НОВЫЙ ЗАКАЗ №' + r.order_number + '\n' + waItems + '\n\nСумма: ' + money(r.total) + '\nТелефон: ' + phone + '\n' + (fulfillment === 'delivery' ? 'Адрес: ' + address + '\nЗона: ' + coZone.options[coZone.selectedIndex].text : 'Самовывоз') + (fulfillment === 'pickup' ? '\nВремя: через ' + coPickupTime.value + ' мин' : '') + '\nОплата: ' + (coPayment.value === 'cash' ? 'Наличными' : 'Переводом') + (coComment.value.trim() ? '\nКомментарий: ' + coComment.value.trim() : '');
+    const waText = '🍻 НОВЫЙ ЗАКАЗ №' + r.order_number + '\n' + waItems + '\n\nДоставка: ' + (fulfillment === 'delivery' ? money(r.delivery_fee || 0) + (r.delivery_reason === 'PASS' ? ' (PASS)' : '') : '—') + '\nСумма: ' + money(r.total) + '\nТелефон: ' + phone + '\n' + (fulfillment === 'delivery' ? 'Адрес: ' + address + '\nЗона: ' + coZone.options[coZone.selectedIndex].text : 'Самовывоз') + (fulfillment === 'pickup' ? '\nВремя: через ' + coPickupTime.value + ' мин' : '') + '\nОплата: ' + (coPayment.value === 'cash' ? 'Наличными' : 'Переводом') + (coComment.value.trim() ? '\nКомментарий: ' + coComment.value.trim() : '');
     track('order_complete', { bundleId: checkoutBundle?.id || null, metadata: { order_number: r.order_number, total: Number(r.total) } });
     const waUrl = 'https://wa.me/995579145634?text=' + encodeURIComponent(waText);
     checkoutBody.innerHTML = `<div class="success"><div class="big">🍻</div><h2>Рывок принят!</h2><p class="muted">Заказ №${r.order_number}<br>Сумма: ${money(r.total)}</p><a class="yellow checkout" style="display:block;text-decoration:none" href="${waUrl}" target="_blank" rel="noopener">Отправить заказ в WhatsApp →</a><button class="skip" onclick="location.reload()">Готово</button></div>`;
@@ -916,7 +962,8 @@ function observeBundles() {
   }, { threshold: .1 });
   io.observe(bundles)
 }
-coZone.addEventListener('change', updateCheckoutTotal);
+coZone.addEventListener('change', () => { updateCheckoutTotal(); refreshDeliveryQuote() });
+coPhone.addEventListener('change', refreshDeliveryQuote);
 document.addEventListener('pivka:intro-done', () => track('splash_complete'), { once: true });
 try {
   if (JSON.parse(localStorage.getItem('pivka_profile') || '{}').phone) repeatQuick.classList.remove('hidden')
