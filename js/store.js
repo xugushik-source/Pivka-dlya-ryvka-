@@ -643,7 +643,9 @@ async function changeCity(id) {
       console.warn(e)
     }
     const [links, zones] = await Promise.all([PIVKA_DB.listPaymentLinks(id), PIVKA_DB.listDeliveryZones(id)]);
-    paymentLinks.innerHTML = links.length ? links.map(x => '<a class="yellow paylink" target="_blank" rel="noopener" href="' + x.url + '">💳 ' + x.name + '</a>').join('') : '<div class="muted">Онлайн-оплата появится после подключения банка. Сейчас доступны наличные и перевод.</div>';
+    // Bank transfer links (BOG / TBC) are shown only when the customer picks «Переводом».
+    paymentLinks.innerHTML = links.length ? '<div class="muted payhint">Переведите сумму «К оплате» по ссылке банка и отправьте скриншот в WhatsApp вместе с заказом.</div>' + links.map(x => '<a class="yellow paylink" target="_blank" rel="noopener" href="' + esc(x.url) + '">💳 ' + esc(x.name) + '</a>').join('') : '<div class="muted">Перевод — по реквизитам, которые пришлём в WhatsApp.</div>';
+    syncPaymentLinks();
     coZone.innerHTML = '<option value="">Выберите зону доставки</option>' + zones.map(z => '<option value="' + z.id + '" data-fee="' + Number(z.fee || 0) + '" data-min="' + Number(z.minimum_order || 0) + '">' + z.name + ' · ' + money(z.fee) + '</option>').join('');
     if (zones.length === 1) {
       coZone.value = zones[0].id
@@ -653,6 +655,11 @@ async function changeCity(id) {
     console.warn(e)
   }
 }
+
+function syncPaymentLinks() {
+  paymentLinks.style.display = coPayment.value === 'transfer' ? 'block' : 'none'
+}
+coPayment.addEventListener('change', syncPaymentLinks);
 
 function setFulfillment(v) {
   fulfillment = v;
