@@ -154,7 +154,7 @@ async function activatePass() {
   }
   try {
     const r = await PIVKA_DB.startPass(passName.value.trim(), passPhone.value.trim());
-    passBody.innerHTML = '<div class="success"><div class="big">👑</div><h2>PASS подготовлен</h2><p class="muted">10 ₾ / месяц. Оплатите переводом — после оплаты мы включим PASS, и доставка с 12:00 до 22:00 станет бесплатной.</p>' + [...paymentLinks.querySelectorAll('a')].map(x => x.outerHTML).join('') + '</div>'
+    passBody.innerHTML = '<div class="success"><div class="big">👑</div><h2>PASS подготовлен</h2><p class="muted">10 ₾ / месяц. Оплатите переводом — после оплаты мы включим PASS: с 12:00 до 22:00 доставка от 20 ₾ бесплатно, меньше — 3 ₾.</p>' + [...paymentLinks.querySelectorAll('a')].map(x => x.outerHTML).join('') + '</div>'
   } catch (e) {
     alert(e.message)
   }
@@ -738,7 +738,7 @@ async function refreshDeliveryQuote() {
   if (!checkoutFormAlive()) return;
   const seq = ++quoteSeq;
   try {
-    const q = await PIVKA_DB.deliveryQuote(fulfillment === 'delivery' ? coZone.value || null : null, coPhone.value.trim() || null, fulfillment);
+    const q = await retry(() => PIVKA_DB.deliveryQuote(fulfillment === 'delivery' ? coZone.value || null : null, coPhone.value.trim() || null, fulfillment));
     if (seq !== quoteSeq || !checkoutFormAlive()) return;
     deliveryQuoteState = { fee: coZone.value || fulfillment !== 'delivery' || q.mode !== 'CHARGE' ? Number(q.fee) : null, reason: q.reason, mode: q.mode || 'CHARGE' }
   } catch (e) {
@@ -774,7 +774,7 @@ function updateCheckoutTotal() {
   coTotal.textContent = money(base + fee);
   checkoutNotice.style.display = fulfillment === 'delivery' ? 'block' : 'none';
   const min = opt?.dataset?.min && Number(opt.dataset.min) ? ' · Минимальный заказ ' + money(opt.dataset.min) : '';
-  const feeText = deliveryQuoteState.reason === 'FREE_FROM' ? 'Доставка бесплатно — заказ от 40 ₾' : deliveryQuoteState.reason === 'ZONE' && fee > 0 ? 'Доставка: ' + money(fee) + ' · от 40 ₾ — бесплатно' : deliveryQuoteState.reason === 'PASS' ? 'Доставка: 0 ₾ — PASS' : mode === 'HIDDEN' ? '' : mode === 'FREE' ? 'Доставка бесплатно' : 'Доставка: ' + money(fee);
+  const feeText = deliveryQuoteState.reason === 'FREE_FROM' ? 'Доставка бесплатно — заказ от 40 ₾' : deliveryQuoteState.reason === 'ZONE' && fee > 0 ? 'Доставка: ' + money(fee) + ' · от 40 ₾ — бесплатно' : deliveryQuoteState.reason === 'PASS_SMALL' ? 'Доставка: ' + money(fee) + ' · с PASS от 20 ₾ — бесплатно' : deliveryQuoteState.reason === 'PASS' ? 'Доставка: 0 ₾ — PASS' : mode === 'HIDDEN' ? '' : mode === 'FREE' ? 'Доставка бесплатно' : 'Доставка: ' + money(fee);
   checkoutNotice.textContent = fulfillment === 'delivery' ? (coZone.value ? (feeText + min).replace(/^ · /, '') || 'Доставка' : 'Выбери зону доставки') : 'Самовывоз — без платы за доставку'
 }
 
@@ -793,7 +793,10 @@ function openCheckout(bundle = null) {
     return
   }
   closeSheet('cartOverlay');
+  // Zones failed to load earlier (bad network) — try again, otherwise the customer cannot pick one.
+  if (coZone.options.length < 2 && currentCity) changeCity(currentCity.id);
   updateCheckoutTotal();
+  refreshDeliveryQuote();
   coError.textContent = '';
   track('checkout_start', { bundleId: checkoutBundle?.id || null, metadata: { total: orderBase() } });
   openSheet('checkoutOverlay')
