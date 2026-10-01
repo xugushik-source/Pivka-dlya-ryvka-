@@ -1,0 +1,189 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Мы знаем, чего ты хочешь</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#080a0b">
+<!-- Link preview must not give the joke away: dark card, no product, no brand. -->
+<meta name="description" content="ბიჭებო, ვიცით, რა გინდათ. · ՄԱՆՉԵՐ, ԳԻՏԵՆՔ՝ ԻՆՉ ԿՈՒԶԵՔ։">
+<meta property="og:type" content="website">
+<meta property="og:title" content="МЫ ЗНАЕМ, ЧЕГО ТЫ ХОЧЕШЬ.">
+<meta property="og:description" content="ბიჭებო, ვიცით, რა გინდათ. · ՄԱՆՉԵՐ, ԳԻՏԵՆՔ՝ ԻՆՉ ԿՈՒԶԵՔ։">
+<meta property="og:image" content="https://xugushik-source.github.io/Pivka-dlya-ryvka-/assets/qr/og.jpg">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preload" href="../assets/qr/teaser.mp4" as="video" type="video/mp4">
+<link rel="preload" href="../assets/qr/poster.jpg" as="image">
+<style>
+*{box-sizing:border-box;margin:0}
+html,body{height:100%;background:#080a0b;color:#fff;font:16px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow:hidden;-webkit-tap-highlight-color:transparent}
+.stage{position:fixed;inset:0;height:100vh;height:100svh;overflow:hidden;background:#080a0b}
+.stage video,.stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 30%}
+.stage img{display:none}
+.stage.still img.on{display:block}
+.stage.still video{display:none}
+/* readable text over the bottom of the picture, face stays clear */
+.shade{position:absolute;left:0;right:0;bottom:0;height:42%;background:linear-gradient(180deg,rgba(8,10,11,0),rgba(8,10,11,.82));pointer-events:none}
+.say{position:absolute;left:18px;right:18px;bottom:calc(11% + env(safe-area-inset-bottom));text-align:center;font-weight:900;font-size:clamp(28px,8.6vw,46px);line-height:1.08;letter-spacing:-.01em;text-shadow:0 2px 18px rgba(0,0,0,.6);overflow-wrap:anywhere}
+.say span{display:inline-block;animation:pop .14s ease-out}
+@keyframes pop{from{transform:scale(.94);opacity:.4}to{transform:none;opacity:1}}
+.langs{position:absolute;top:calc(10px + env(safe-area-inset-top));right:10px;display:flex;gap:2px;z-index:3}
+.langs button{appearance:none;border:0;background:rgba(0,0,0,.28);color:rgba(255,255,255,.72);font:700 11px system-ui,sans-serif;padding:6px 8px;border-radius:8px}
+.langs button.on{color:#ffb51b}
+/* the joke: hard cut, no fade */
+.reveal{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:26px;padding:24px;background:#080a0b;text-align:center;z-index:5}
+.reveal.on{display:flex}
+.q{font-weight:1000;font-size:clamp(30px,9.6vw,54px);line-height:1.05;text-transform:uppercase;overflow-wrap:anywhere}
+.q,.brand{width:100%;max-width:640px}
+.brand{font-weight:1000;font-size:clamp(34px,11vw,64px);line-height:.9;text-transform:uppercase;visibility:hidden}
+.brand b{display:block;color:#ffb51b}
+html[lang=ka] .brand,html[lang=hy] .brand{line-height:1.12}
+.brand.on{visibility:visible}
+.age{position:absolute;bottom:calc(16px + env(safe-area-inset-bottom));font:800 13px system-ui,sans-serif;color:#a9afb3;border:1px solid #3a4145;border-radius:20px;padding:4px 10px}
+</style></head><body>
+<main class="stage" id="stage">
+<video id="v" src="../assets/qr/teaser.mp4" poster="../assets/qr/poster.jpg" autoplay muted playsinline webkit-playsinline preload="auto" disablepictureinpicture disableremoteplayback aria-hidden="true"></video>
+<img id="still1" src="../assets/qr/poster.jpg" alt="">
+<img id="still2" src="../assets/qr/wink.jpg" alt="">
+<div class="shade"></div>
+<p class="say" id="say" aria-live="polite"></p>
+<nav class="langs" id="langs"><button data-l="ru">RU</button><button data-l="hy">HY</button><button data-l="ka">KA</button></nav>
+</main>
+<section class="reveal" id="reveal" aria-live="polite">
+<p class="q" id="q"></p>
+<p class="brand" id="brand"></p>
+<span class="age">18+</span>
+</section>
+<script src="../config.js" defer></script>
+<script>
+// Street QR teaser: girl → «Сейчас…» ×3 → hard cut → «А ты чего ждал? 🍺» → the store (its own intro curtain).
+// Only this /qr/ entry plays it; the normal store link never does. No libraries, nothing from the catalog.
+(() => {
+  'use strict';
+  const T = { s1: .7, s2: 1.5, s3: 2.3, cut: 3.4, brand: .35, leave: 1.0 }; // seconds; cut = peak of the wink
+  const TEXT = {
+    ru: ['Сейчас...', 'Сейчас-сейчас...', 'Сейчас-сейчас-сейчас...', 'А ТЫ ЧЕГО ЖДАЛ? 🍺', 'Пивка<b>для рывка</b>'],
+    hy: ['Հիմա...', 'Հիմա, հիմա...', 'Հիմա, հիմա, հիմա...', 'ԲԱ Ի՞ՆՉ ԷԻՐ ՍՊԱՍՈՒՄ։ 🍺', 'Գարեջուր<b>լավ երեկոյի համար</b>'],
+    ka: ['ახლავე...', 'ახლავე, ახლავე...', 'ახლავე, ახლავე, ახლავე...', 'აბა, რას ელოდი? 🍺', 'ლუდი<b>გაქანებისთვის</b>']
+  };
+  const $ = id => document.getElementById(id);
+  const v = $('v'), stage = $('stage'), say = $('say');
+  const store = (k, val) => { try { if (val === undefined) return localStorage.getItem(k); localStorage.setItem(k, val) } catch (e) {} };
+
+  // Language: saved choice → phone language → Russian (same rule as the store).
+  let lang = store('pivka_lang');
+  if (!TEXT[lang]) lang = (navigator.languages || [navigator.language || '']).map(x => String(x).slice(0, 2).toLowerCase()).find(x => TEXT[x]) || 'ru';
+  document.documentElement.lang = lang;
+
+  // Campaign: spot (which poster), ref (who shared), origin_spot (which poster started the chain).
+  const q = new URLSearchParams(location.search), camp = {};
+  ['utm_source', 'utm_medium', 'utm_campaign', 'spot', 'ref', 'origin_spot'].forEach(k => {
+    const x = (q.get(k) || '').trim();
+    if (/^[\w.-]{1,40}$/.test(x)) camp[k] = x;
+  });
+  if (!camp.origin_spot && camp.spot) camp.origin_spot = camp.spot;
+  camp.at = new Date().toISOString();
+  store('pivka_campaign', JSON.stringify(camp));
+  if (!store('pivka_campaign_first')) store('pivka_campaign_first', JSON.stringify(camp));
+
+  // Same free analytics as the store (store_events); fire-and-forget, never blocks the teaser.
+  function track(event, extra, tries = 0) {
+    try {
+      const cfg = window.PIVKA_CONFIG;
+      if (!cfg) { if (tries < 20) setTimeout(() => track(event, extra, tries + 1), 250); return }   // config.js is deferred
+      let sid = store('pivka_session'); if (!sid) { sid = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random()); store('pivka_session', sid) }
+      fetch(cfg.supabaseUrl + '/rest/v1/rpc/track_store_event', {
+        method: 'POST', keepalive: true,
+        headers: { 'Content-Type': 'application/json', apikey: cfg.supabaseAnonKey, Authorization: 'Bearer ' + cfg.supabaseAnonKey },
+        body: JSON.stringify({ p_event: event, p_session: sid, p_metadata: Object.assign({ lang }, camp, extra || {}) })
+      }).catch(() => {});
+    } catch (e) {}
+  }
+  track('qr_open');
+
+  let step = -1, done = false;
+  function line(i) {
+    if (i === step) return;
+    step = i;
+    say.innerHTML = i < 0 ? '' : '<span>' + TEXT[lang][i] + '</span>';
+  }
+  function paint(t) {
+    line(t >= T.s3 ? 2 : t >= T.s2 ? 1 : t >= T.s1 ? 0 : -1);
+    if (t >= T.cut) cut();
+  }
+  // Long Georgian/Armenian words must fit the phone width: shrink the line until it does (same as the store curtain).
+  function fit(el) {
+    el.style.fontSize = '';
+    let size = parseFloat(getComputedStyle(el).fontSize), guard = 14;
+    while (el.scrollWidth > el.clientWidth + 1 && guard-- > 0) { size *= .92; el.style.fontSize = size + 'px' }
+  }
+  function setLang(l) {
+    lang = l; store('pivka_lang', l); document.documentElement.lang = l;
+    document.querySelectorAll('#langs button').forEach(b => b.classList.toggle('on', b.dataset.l === l));
+    const s = step; step = -2; line(s);
+    if (done) { $('q').textContent = TEXT[l][3]; $('brand').innerHTML = TEXT[l][4]; fit($('q')); fit($('brand')) }
+  }
+  document.querySelectorAll('#langs button').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); setLang(b.dataset.l) }));
+  setLang(lang);
+
+  function cut() {
+    if (done) return;
+    done = true;
+    try { v.pause() } catch (e) {}
+    $('q').textContent = TEXT[lang][3];
+    $('brand').innerHTML = TEXT[lang][4];
+    $('reveal').classList.add('on');          // hard cut: instant, no transition
+    fit($('q')); fit($('brand'));
+    stage.style.visibility = 'hidden';
+    store('pivka_teaser_seen', '1');          // the store shows «Подлови друга» after this
+    track('qr_reveal', { video: mode === 'video' });
+    setTimeout(() => $('brand').classList.add('on'), T.brand * 1000);
+    setTimeout(leave, T.leave * 1000);
+  }
+  // The store keeps the campaign in its URL (and in localStorage) so it can be used later.
+  const target = (() => {
+    const p = new URLSearchParams(); p.set('from', 'qr');
+    ['utm_source', 'utm_medium', 'utm_campaign', 'spot', 'ref', 'origin_spot'].forEach(k => { if (camp[k]) p.set(k, camp[k]) });
+    return '../?' + p;
+  })();
+  function leave() { location.replace(target) } // replace: «Back» does not replay the joke
+
+  // Video clock drives the text; if the video can't play (no autoplay, Low Power Mode, bad network) or stalls,
+  // the same sequence runs on still frames by the wall clock — never a black screen.
+  let mode = 'wait', t0 = 0, last = 0, lastMove = 0, offset = 0;
+  function tick(now) {
+    if (done) return;
+    if (mode === 'video') {
+      const ct = v.currentTime;
+      if (ct - last > .5) { still(last); return requestAnimationFrame(tick) } // jumped ahead (broken/partial file)
+      if (ct !== last) { last = ct; lastMove = now }
+      else if (now - lastMove > 900) { still(ct); return requestAnimationFrame(tick) } // stalled mid-way
+      paint(ct);
+    } else if (mode === 'still') {
+      const t = offset + (now - t0) / 1000;
+      if (t >= 2.8) { $('still1').classList.remove('on'); $('still2').classList.add('on') } // the wink
+      paint(t);
+    }
+    requestAnimationFrame(tick);
+  }
+  function still(from) {
+    if (mode === 'still' || done) return;
+    mode = 'still'; offset = from || 0; t0 = performance.now();
+    try { v.pause() } catch (e) {}           // a late-buffered video must not keep running (and «end») behind the stills
+    stage.classList.add('still');
+    $(offset >= 2.8 ? 'still2' : 'still1').classList.add('on');
+  }
+  const onPlaying = () => { if (mode === 'wait') { mode = 'video'; lastMove = performance.now() } };
+  v.addEventListener('playing', onPlaying);
+  if (!v.paused && v.readyState >= 3) onPlaying();   // autoplay may have started before this script ran
+  v.addEventListener('error', () => still(0));
+  // A video cut short (partial download) «ends» early: finish the sequence on the stills instead.
+  v.addEventListener('ended', () => { if (mode === 'video') last < T.cut - .1 ? still(last) : cut() }); // last = last real frame time
+  const p = v.play();
+  if (p && p.catch) p.catch(() => still(0));
+  setTimeout(() => { if (mode === 'wait') still(0) }, 1500);
+  requestAnimationFrame(tick);
+  // Warm the store page while the joke plays (the page only — no catalog requests).
+  addEventListener('load', () => { const l = document.createElement('link'); l.rel = 'prefetch'; l.href = target; document.head.appendChild(l) });
+})();
+</script>
+</body></html>
