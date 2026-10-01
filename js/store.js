@@ -215,7 +215,9 @@ function renderTrack(o) {
   if (!box) return;
   clearTimeout(trackTick);
   box.innerHTML = '<div class="trackHead"><b>Ваш заказ</b><span>Заказ №' + esc(o.order_number) + '</span></div><ol class="track">' +
-    trackSteps(o).map(s => '<li class="' + s[2] + '"><i></i><span>' + esc(s[0]) + '</span><time>' + trackTime(s[1]) + '</time></li>').join('') + '</ol>';
+    trackSteps(o).map(s => '<li class="' + s[2] + '"><i></i><span>' + esc(s[0]) + '</span><time>' + trackTime(s[1]) + '</time></li>').join('') + '</ol>' +
+    // Until the courier confirms, the customer can still change the order.
+    (o.status === 'NEW' ? '<a class="trackEdit" href="./edit.html?o=' + encodeURIComponent(trackSaved()?.id || '') + '">✏️ Изменить заказ</a>' : '');
   box.hidden = false;
   if (o.status === 'OUT_FOR_DELIVERY' && o.fulfillment !== 'pickup' && o.ready_at) {
     // Switch «Собран» → «Едет» exactly on time, without waiting for the next poll.

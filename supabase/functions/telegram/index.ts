@@ -3,12 +3,14 @@
 //   1. Telegram webhook      — header X-Telegram-Bot-Api-Secret-Token = vault tg_webhook_secret
 //   2. The database (pg_net) — header x-internal-secret                = vault tg_internal_secret
 //   3. Admin panel           — Authorization: Bearer <staff JWT>, OWNER/ADMIN only
+//   4. Order edit page opened from the bot — Telegram Mini App initData, signed with the bot token
 // Couriers press buttons; every action goes through the database function tg_courier, which identifies the
 // courier by his Telegram chat and checks the order state — the message text is never trusted.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 const SELF_URL = "https://uphnuzgaildmjrttmbaq.supabase.co/functions/v1/telegram";
+const SITE_URL = "https://xugushik-source.github.io/Pivka-dlya-ryvka-/";
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -107,6 +109,10 @@ function suppliersLine(o: any) {
   return "\n<b>Поставщики:</b> " + gs.map((g) => `${esc(g.suppliers?.name || "")} ${g.status === "READY" || g.status === "PICKED_UP" ? "✅" : "⏳"}` +
     (g.missing_note ? ` (нет: ${esc(g.missing_note)})` : "")).join(" · ");
 }
+// «✏️ Изменить заказ» opens the edit page inside Telegram (Mini App); allowed until «Собран».
+const editable = (o: any) => ["NEW", "CONFIRMED", "PREPARING"].includes(o.status);
+const editButton = (o: any) => ({ text: "✏️ Изменить заказ", web_app: { url: `${SITE_URL}edit.html?o=${o.id}` } });
+const ownerKeyboard = (o: any) => ({ inline_keyboard: editable(o) ? [[editButton(o)]] : [] });
 const ownerText = (o: any) => `🍺 <b>Заказ №${o.order_number}</b> · ${time(o.created_at)}\n${orderBody(o)}\n\n<b>Статус:</b> ${statusLine(o)}${suppliersLine(o)}`;
 
 const offerText = (o: any) => {
@@ -117,7 +123,7 @@ const offerText = (o: any) => {
 };
 
 const HINT: Record<string, string> = {
-  NEW: "📞 Позвоните клиенту, уточните заказ и адрес. Если всё верно — «Принят».",
+  NEW: "📞 Позвоните клиенту, уточните заказ и адрес. Клиент что-то меняет — «✏️ Изменить заказ». Всё верно — «Принят».",
   CONFIRMED: "Заберите заказ и нажмите «Собран» — клиент увидит, что заказ едет.",
   OUT_FOR_DELIVERY: "Отдали заказ? Выберите, как клиент заплатил:",
 };
@@ -134,6 +140,7 @@ function cardKeyboard(o: any) {
   }
   if (o.status === "NEW") rows.push([{ text: "✅ Клиент подтвердил — Принят", callback_data: cb("accept", o.id) }]);
   if (o.status === "CONFIRMED" || o.status === "PREPARING") rows.push([{ text: "📦 Собран — забрал заказ", callback_data: cb("ready", o.id) }]);
+  if (editable(o)) rows.push([editButton(o)]);
   if (o.status === "OUT_FOR_DELIVERY") rows.push([
     { text: "💵 Наличные", callback_data: cb("deliver", o.id, "cash") },
     { text: "💳 Безнал", callback_data: cb("deliver", o.id, "card") },
@@ -184,7 +191,7 @@ async function onOrderCreated(cfg: Cfg, orderId: string) {
   let sent = 0;
   for (const l of await linksOf("OWNER")) {
     try {
-      const m = await tg(cfg, "sendMessage", { chat_id: l.chat_id, text: ownerText(o), parse_mode: "HTML", disable_web_page_preview: true });
+      const m = await tg(cfg, "sendMessage", { chat_id: l.chat_id, text: ownerText(o), parse_mode: "HTML", disable_web_page_preview: true, reply_markup: ownerKeyboard(o) });
       await remember(o.id, l.chat_id, m.message_id, "OWNER_NEW"); sent++;
     } catch (e) { console.error(e); }
   }
@@ -206,7 +213,7 @@ async function onOrderCreated(cfg: Cfg, orderId: string) {
 async function refreshOwner(cfg: Cfg, o: any) {
   const { data: msgs } = await db.from("telegram_messages").select("chat_id,message_id").eq("order_id", o.id).eq("kind", "OWNER_NEW");
   for (const m of msgs || []) {
-    await quiet(tg(cfg, "editMessageText", { chat_id: m.chat_id, message_id: m.message_id, text: ownerText(o), parse_mode: "HTML", disable_web_page_preview: true }));
+    await quiet(tg(cfg, "editMessageText", { chat_id: m.chat_id, message_id: m.message_id, text: ownerText(o), parse_mode: "HTML", disable_web_page_preview: true, reply_markup: ownerKeyboard(o) }));
   }
 }
 
@@ -292,12 +299,70 @@ async function onOrderConfirmed(cfg: Cfg, orderId: string) {
 async function onOrderCancelled(cfg: Cfg, orderId: string) {
   const o = await loadOrder(orderId);
   const { data: msgs } = await db.from("telegram_messages").select("chat_id,message_id").eq("order_id", o.id).eq("kind", "SUPPLIER");
+  const chats = new Set<number>();
   for (const m of msgs || []) {
     await quiet(tg(cfg, "editMessageText", { chat_id: m.chat_id, message_id: m.message_id, text: `❌ <b>Заказ №${o.order_number} отменён</b> — не готовьте его.`, parse_mode: "HTML" }));
-    await quiet(tg(cfg, "sendMessage", { chat_id: m.chat_id, text: `❌ Заказ №${o.order_number} отменён — не готовьте его.` }));
+    chats.add(m.chat_id);
   }
+  for (const chat of chats) await quiet(tg(cfg, "sendMessage", { chat_id: chat, text: `❌ Заказ №${o.order_number} отменён — не готовьте его.` }));
   await refreshOwner(cfg, o);
-  return (msgs || []).length;
+  // Poured beer can't go back to the supplier: say who it was written off on.
+  const { data: wo } = await db.from("order_writeoffs").select("name,quantity,amount,charged_to").eq("order_id", o.id).eq("reason", "CANCEL");
+  if (wo?.length) {
+    const sum = wo.reduce((t: number, w: any) => t + Number(w.amount), 0);
+    const onDriver = wo[0].charged_to === "DRIVER";
+    const text = `🍺 Заказ №${o.order_number} отменён после «Принят» — пиво уже разлито: ` +
+      wo.map((w: any) => `${esc(w.name)} ${Number(w.quantity)} л`).join(", ") +
+      `.\n<b>${money(sum)}</b> по закупу ${onDriver ? "записано на курьера " + esc(o.driverName || "") : "списано на владельца"}.`;
+    await sendToKind(cfg, "OWNER", text);
+    const driverChat = onDriver ? await chatOf("DRIVER", o.driverId) : null;
+    if (driverChat) await quiet(tg(cfg, "sendMessage", { chat_id: driverChat, text, parse_mode: "HTML" }));
+  }
+  return chats.size;
+}
+
+// The order was changed (customer before «Принят», courier or owner until «Собран»).
+// Owner and courier see the new list; after «Принят» only suppliers whose part changed get a new message.
+async function onOrderEdited(cfg: Cfg, b: any) {
+  const o = await loadOrder(b.order_id);
+  await refreshOwner(cfg, o);
+  await refreshCourier(cfg, o);
+  const who = b.by === "CUSTOMER" ? "Клиент" : b.by === "DRIVER" ? `Курьер ${b.actor || ""}` : (b.actor || "Владелец");
+  const sumLine = `Сумма: ${money(b.total_before)} → <b>${money(o.total)}</b>`;
+  const wo = Number(b.writeoff) > 0
+    ? `\n🍺 Убрали уже разлитое пиво: ${money(b.writeoff)} по закупу — ${b.charged_to === "DRIVER" ? "записано на курьера " + esc(o.driverName || "") : "на владельце"}.`
+    : "";
+  if (b.by !== "ADMIN") await sendToKind(cfg, "OWNER", `✏️ <b>Заказ №${o.order_number} изменён</b> — ${esc(who)}\n${sumLine}${wo}`);
+  if (b.by !== "DRIVER") {
+    const chat = await chatOf("DRIVER", o.driverId);
+    if (chat) await quiet(tg(cfg, "sendMessage", { chat_id: chat, text: `✏️ ${esc(who)} изменил заказ №${o.order_number} — проверьте состав.\n${sumLine}${wo}`, parse_mode: "HTML" }));
+  }
+  if (o.status === "NEW") return 0; // suppliers haven't got this order yet
+  let sent = 0;
+  const removed: string[] = b.removed || [];
+  for (const sid of [...new Set<string>([...(b.changed || []), ...removed])]) {
+    const gone = removed.includes(sid) || !supplierItems(o, sid).length;
+    const g = ((o.supplier_order_groups || []) as any[]).find((x) => x.supplier_id === sid);
+    const text = gone
+      ? `❌ <b>Заказ №${o.order_number}</b>: ваши товары убрали из заказа — не готовьте.`
+      : `✏️ <b>Заказ изменён</b> — готовьте по новому списку:\n\n${supplierText(o, sid)}`;
+    const chat = await chatOf("SUPPLIER", sid);
+    if (!chat) {
+      await sendToKind(cfg, "OWNER", `⚠️ <b>${esc(g?.suppliers?.name || "Поставщик")}</b> не подключён к боту — перешлите ему:\n\n${text}`);
+      continue;
+    }
+    const { data: msgs } = await db.from("telegram_messages").select("id,message_id").eq("order_id", o.id).eq("kind", "SUPPLIER").eq("chat_id", chat);
+    for (const m of msgs || []) {
+      await quiet(tg(cfg, "editMessageText", { chat_id: chat, message_id: m.message_id, text: `✏️ Заказ №${o.order_number} изменён — смотрите новое сообщение ниже.` }));
+    }
+    if (gone && msgs?.length) await db.from("telegram_messages").delete().in("id", msgs.map((m: any) => m.id));
+    try {
+      const m = await tg(cfg, "sendMessage", { chat_id: chat, text, parse_mode: "HTML", ...(gone ? {} : { reply_markup: supplierKeyboard(o, sid) }) });
+      if (!gone) await remember(o.id, chat, m.message_id, "SUPPLIER");
+      sent++;
+    } catch (e) { console.error(e); }
+  }
+  return sent;
 }
 
 async function onSupplierCallback(cfg: Cfg, q: any, act: string, id: string, arg: string) {
@@ -421,6 +486,37 @@ async function onUpdate(cfg: Cfg, u: any) {
   if (u.message?.text && u.message.chat?.id) return onStart(cfg, u.message);
 }
 
+// ---------- Order edit page inside Telegram (Mini App)
+
+// https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
+async function hmac(key: Uint8Array, data: string) {
+  const k = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return new Uint8Array(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(data)));
+}
+async function webAppUser(cfg: Cfg, initData: string) {
+  if (!cfg.token || !initData) return null;
+  const p = new URLSearchParams(initData);
+  const hash = p.get("hash");
+  if (!hash) return null;
+  p.delete("hash");
+  const check = [...p.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([k, v]) => `${k}=${v}`).join("\n");
+  const secret = await hmac(new TextEncoder().encode("WebAppData"), cfg.token);
+  const sign = [...await hmac(secret, check)].map((x) => x.toString(16).padStart(2, "0")).join("");
+  if (sign !== hash) return null;
+  if (Date.now() / 1000 - Number(p.get("auth_date") || 0) > 86400) return null;
+  try { return JSON.parse(p.get("user") || "null"); } catch { return null; }
+}
+
+async function onWebAppEdit(cfg: Cfg, b: any) {
+  const user = await webAppUser(cfg, String(b.init_data || ""));
+  if (!user?.id) return out({ error: "Откройте страницу заново из Telegram" }, 401);
+  const { data, error } = await db.rpc("tg_order_edit", {
+    p_chat: user.id, p_order: b.order_id, p_items: b.items ?? null, p_keep_bundle: b.keep_bundle ?? true, p_charge: b.charge || "DRIVER",
+  });
+  if (error) return out({ error: error.message }, 400);
+  return out(data);
+}
+
 // ---------- Admin
 
 async function requireOwner(req: Request) {
@@ -449,12 +545,14 @@ Deno.serve(async (req) => {
       if (b.action === "remind") return out({ sent: await onRemind(cfg, b.order_id) });
       if (b.action === "order_confirmed") return out({ sent: await onOrderConfirmed(cfg, b.order_id) });
       if (b.action === "order_cancelled") return out({ sent: await onOrderCancelled(cfg, b.order_id) });
+      if (b.action === "order_edited") return out({ sent: await onOrderEdited(cfg, b) });
       return out({ error: "Unknown action" }, 400);
     }
 
+    const b = await req.json();
+    if (b.action === "webapp_edit") return await onWebAppEdit(cfg, b);
     const user = await requireOwner(req);
     if (!user) return out({ error: "Unauthorized" }, 401);
-    const b = await req.json();
     if (b.action === "setup") {
       const me = await tg(cfg, "getMe", {});
       await tg(cfg, "setWebhook", { url: SELF_URL, secret_token: cfg.webhook, allowed_updates: ["message", "callback_query"], drop_pending_updates: true });
