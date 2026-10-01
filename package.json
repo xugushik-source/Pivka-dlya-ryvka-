@@ -1,0 +1,15 @@
+{
+  "name": "pivka-dlya-ryvka",
+  "private": true,
+  "description": "Static storefront (GitHub Pages). Node is only needed for the street QR poster generator.",
+  "type": "module",
+  "scripts": {
+    "generate:qr": "node scripts/street-qr.mjs"
+  },
+  "devDependencies": {
+    "jsqr": "^1.4.0",
+    "playwright-core": "^1.55.0",
+    "pngjs": "^7.0.0",
+    "qrcode": "^1.5.4"
+  }
+}

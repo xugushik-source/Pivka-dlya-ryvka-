@@ -1039,7 +1039,7 @@ async function submitCheckout() {
     else r = await PIVKA_DB.createOrder(payload);
     const waItems = (checkoutBundle ? checkoutBundle.name + ' (' + (checkoutBundle.items || []).map(i => i.name + ' × ' + Number(i.quantity)).join(', ') + ')' + (items.length ? '\n' : '') : '') + Object.values(cart).map(x => x.p.name + ' × ' + x.qty).join('\n');
     const waText = '🍻 НОВЫЙ ЗАКАЗ №' + r.order_number + '\n' + waItems + '\n\nДоставка: ' + (fulfillment === 'delivery' ? money(r.delivery_fee || 0) + (r.delivery_reason === 'PASS' ? ' (PASS)' : '') : '—') + '\nСумма: ' + money(r.total) + '\nТелефон: ' + phone + '\n' + (fulfillment === 'delivery' ? 'Адрес: ' + address + '\nЗона: ' + coZone.options[coZone.selectedIndex].text : 'Самовывоз') + (fulfillment === 'pickup' ? '\nВремя: через ' + coPickupTime.value + ' мин' : '') + '\nОплата: ' + (coPayment.value === 'cash' ? 'Наличными' : 'Переводом') + (coComment.value.trim() ? '\nКомментарий: ' + coComment.value.trim() : '');
-    track('order_complete', { bundleId: checkoutBundle?.id || null, metadata: { order_number: r.order_number, total: Number(r.total) } });
+    track('order_complete', { bundleId: checkoutBundle?.id || null, metadata: { order_number: r.order_number, total: Number(r.total), campaign: campaignInfo() } });
     try {
       if (r.order_id) localStorage.setItem(TRACK_KEY, JSON.stringify({ id: r.order_id, n: r.order_number }))
     } catch (e) {}
@@ -1342,3 +1342,77 @@ function detectLang() {
 document.documentElement.lang = detectLang();
 document.addEventListener('DOMContentLoaded', () => setLang(detectLang()));
 initOrderTrack();
+
+// Street QR campaign. /qr/ (the teaser) saves the poster spot / friend ref in localStorage and sends people here
+// with ?from=qr. Orders keep the campaign in their analytics event, so posters can be compared later.
+function campaignInfo() {
+  try {
+    const last = JSON.parse(localStorage.getItem('pivka_campaign') || 'null');
+    const first = JSON.parse(localStorage.getItem('pivka_campaign_first') || 'null');
+    return last ? { last, first } : null
+  } catch (e) {
+    return null
+  }
+}
+
+const CATCH_TEXT = {
+  ru: 'Парни реально знают, чего мы хотим 😂\nСмотри:',
+  hy: 'Տղերքն իրոք գիտեն՝ ինչ ենք ուզում 😂\nՆայիր՝',
+  ka: 'ბიჭებმა ნამდვილად იციან, რა გვინდა 😂\nნახე:'
+};
+// Link that plays the same teaser for the friend; ref = who shared, origin_spot = the poster that started it.
+function catchFriendUrl() {
+  let ref = '';
+  try {
+    ref = localStorage.getItem('pivka_ref') || '';
+    if (!ref) {
+      ref = Math.random().toString(36).slice(2, 8);
+      localStorage.setItem('pivka_ref', ref)
+    }
+  } catch (e) {}
+  const c = campaignInfo()?.last || {};
+  // Short on purpose: /qr/?r=<ref>&o=<spot>; the teaser page expands it to utm_source=friend&utm_medium=share&…
+  const u = new URL('qr/', location.href.split(/[?#]/)[0].replace(/[^/]*$/, ''));
+  const p = new URLSearchParams();
+  if (ref) p.set('r', ref);
+  if (c.origin_spot || c.spot) p.set('o', c.origin_spot || c.spot);
+  if (c.utm_campaign && c.utm_campaign !== 'guys') p.set('c', c.utm_campaign);
+  u.search = p.toString();
+  return u.href
+}
+async function catchFriend() {
+  const url = catchFriendUrl();
+  const text = (CATCH_TEXT[lang()] || CATCH_TEXT.ru) + '\n' + url;
+  const meta = { ref: new URL(url).searchParams.get('r'), origin_spot: new URL(url).searchParams.get('o') };
+  if (navigator.share) {
+    try {
+      await navigator.share({ text });
+      track('qr_share', { metadata: { ...meta, method: 'share' } });
+      return
+    } catch (e) {
+      if (e && e.name === 'AbortError') return
+    }
+  }
+  catchLink.value = url;
+  catchCopy.textContent = 'Скопировать ссылку';
+  catchOverlay.dataset.text = text;
+  openSheet('catchOverlay')
+}
+async function copyCatchLink() {
+  const text = catchOverlay.dataset.text || catchLink.value;
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch (e) {
+    catchLink.select();
+    try { document.execCommand('copy') } catch (x) {}
+  }
+  catchCopy.textContent = 'Скопировано ✓';
+  track('qr_share', { metadata: { ref: new URL(catchLink.value).searchParams.get('r'), method: 'copy' } })
+}
+(() => {
+  let seen = false;
+  try { seen = localStorage.getItem('pivka_teaser_seen') === '1' } catch (e) {}
+  const btn = document.getElementById('catchFriend');
+  if (btn && seen) btn.hidden = false;
+  if (new URLSearchParams(location.search).get('from') === 'qr') track('qr_landing', { metadata: { campaign: campaignInfo() } })
+})();
