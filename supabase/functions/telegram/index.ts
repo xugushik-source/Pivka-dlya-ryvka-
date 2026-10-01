@@ -57,8 +57,9 @@ async function loadOrder(orderId: string) {
     .select("id,order_number,status,fulfillment_type,address_snapshot,payment_method,discount_total,delivery_fee,total,comment," +
       "created_at,confirmed_at,ready_at,delivered_at,cancellation_reason,city_id," +
       "customers(full_name,phone),service_cities(name),delivery_zones(name)," +
-      "order_items(name_snapshot,quantity,unit_snapshot,unit_price_snapshot,line_total,is_gift)," +
-      "delivery_assignments(driver_id,drivers(name)),order_collections(method,created_at)")
+      "order_items(name_snapshot,quantity,unit_snapshot,unit_price_snapshot,line_total,is_gift,supplier_id,supplier_cost_snapshot)," +
+      "delivery_assignments(driver_id,drivers(name)),order_collections(method,created_at)," +
+      "supplier_order_groups(supplier_id,status,ready_at,missing_note,suppliers(name))")
     .eq("id", orderId).single();
   if (error) throw error;
   const a: any = Array.isArray((o as any).delivery_assignments) ? (o as any).delivery_assignments[0] : (o as any).delivery_assignments;
@@ -99,7 +100,14 @@ function statusLine(o: any) {
   }
 }
 
-const ownerText = (o: any) => `🍺 <b>Заказ №${o.order_number}</b> · ${time(o.created_at)}\n${orderBody(o)}\n\n<b>Статус:</b> ${statusLine(o)}`;
+// «Поставщики: Давид ✅ · Кристалл ⏳ (нет: Сиг)» once the order is accepted.
+function suppliersLine(o: any) {
+  const gs = (o.supplier_order_groups || []) as any[];
+  if (!gs.length || !["CONFIRMED", "PREPARING", "OUT_FOR_DELIVERY"].includes(o.status)) return "";
+  return "\n<b>Поставщики:</b> " + gs.map((g) => `${esc(g.suppliers?.name || "")} ${g.status === "READY" || g.status === "PICKED_UP" ? "✅" : "⏳"}` +
+    (g.missing_note ? ` (нет: ${esc(g.missing_note)})` : "")).join(" · ");
+}
+const ownerText = (o: any) => `🍺 <b>Заказ №${o.order_number}</b> · ${time(o.created_at)}\n${orderBody(o)}\n\n<b>Статус:</b> ${statusLine(o)}${suppliersLine(o)}`;
 
 const offerText = (o: any) => {
   const n = (o.order_items || []).filter((i: any) => !i.is_gift).length;
@@ -114,7 +122,7 @@ const HINT: Record<string, string> = {
   OUT_FOR_DELIVERY: "Отдали заказ? Выберите, как клиент заплатил:",
 };
 const cardText = (o: any) =>
-  `🛵 <b>Заказ №${o.order_number}</b> · ${time(o.created_at)}\n${orderBody(o)}\n\n<b>Статус:</b> ${statusLine(o)}` +
+  `🛵 <b>Заказ №${o.order_number}</b> · ${time(o.created_at)}\n${orderBody(o)}\n\n<b>Статус:</b> ${statusLine(o)}${suppliersLine(o)}` +
   (HINT[o.status] ? `\n\n${HINT[o.status]}` : "");
 
 const cb = (act: string, id: string, arg = "") => `c|${act}|${id}${arg ? "|" + arg : ""}`;
@@ -212,6 +220,121 @@ async function onRemind(cfg: Cfg, orderId: string) {
     `👤 ${esc(o.customers?.full_name || "")} · ${esc(o.customers?.phone || "")} · ${money(o.total)}`);
 }
 
+// ---------- Suppliers: only their own lines, at purchase price, no customer data.
+
+const prepMinutes = (o: any) => o.fulfillment_type === "delivery" ? 5 : 10;
+function supplierItems(o: any, supplierId: string) {
+  return ((o.order_items || []) as any[]).filter((i) => i.supplier_id === supplierId)
+    .sort((a, b) => Number(a.is_gift) - Number(b.is_gift) || String(a.name_snapshot).localeCompare(String(b.name_snapshot)));
+}
+function supplierText(o: any, supplierId: string) {
+  const items = supplierItems(o, supplierId);
+  const due = new Date(new Date(o.confirmed_at || o.created_at).getTime() + prepMinutes(o) * 60000).toISOString();
+  const sum = items.reduce((t, i) => t + Number(i.supplier_cost_snapshot || 0) * Number(i.quantity), 0);
+  const g = ((o.supplier_order_groups || []) as any[]).find((x) => x.supplier_id === supplierId) || {};
+  return [
+    `📦 <b>Заказ №${o.order_number}</b> · подготовить за ${prepMinutes(o)} мин (к ${hm(due)})`,
+    o.fulfillment_type === "delivery" ? `🛵 Заберёт: ${esc(o.driverName || "курьер")}` : "🏪 Самовывоз",
+    "",
+    ...items.map((i) => `${i.is_gift ? "🎁" : "•"} ${esc(i.name_snapshot)} — ${qty(i.quantity, i.unit_snapshot)} × ${money(i.supplier_cost_snapshot)} = <b>${money(Number(i.supplier_cost_snapshot || 0) * Number(i.quantity))}</b>${i.is_gift ? " (подарок клиенту)" : ""}`),
+    "",
+    `<b>К оплате вам: ${money(sum)}</b>`,
+    g.missing_note ? `⚠️ Нет: ${esc(g.missing_note)}` : null,
+    g.status === "READY" ? `✅ Готово ${hm(g.ready_at)}` : null,
+  ].filter((l) => l !== null).join("\n");
+}
+const scb = (act: string, id: string, arg = "") => `s|${act}|${id}${arg !== "" ? "|" + arg : ""}`;
+function supplierKeyboard(o: any, supplierId: string) {
+  const g = ((o.supplier_order_groups || []) as any[]).find((x) => x.supplier_id === supplierId) || {};
+  if (g.status === "READY" || g.status === "CANCELLED" || ["CANCELLED", "DELIVERED", "REFUNDED"].includes(o.status)) return { inline_keyboard: [] };
+  return { inline_keyboard: [[{ text: "✅ Готово", callback_data: scb("ready", o.id) }, { text: "⚠️ Чего-то нет", callback_data: scb("miss", o.id) }]] };
+}
+const missingKeyboard = (o: any, supplierId: string) => ({
+  inline_keyboard: [
+    ...supplierItems(o, supplierId).map((i, k) => [{ text: `Нет: ${String(i.name_snapshot).slice(0, 40)}`, callback_data: scb("mi", o.id, String(k)) }]),
+    [{ text: "← Назад", callback_data: scb("back", o.id) }],
+  ],
+});
+
+async function chatOf(kind: string, refId: string | null) {
+  if (!refId) return null;
+  const { data } = await db.from("telegram_links").select("chat_id").eq("kind", kind).eq("ref_id", refId).eq("active", true).not("chat_id", "is", null).maybeSingle();
+  return data?.chat_id || null;
+}
+
+// The courier's card is the offer message he pressed «Беру» on.
+async function refreshCourier(cfg: Cfg, o: any) {
+  const chat = await chatOf("DRIVER", o.driverId);
+  if (!chat) return;
+  const { data: m } = await db.from("telegram_messages").select("message_id").eq("order_id", o.id).eq("kind", "DRIVER_OFFER").eq("chat_id", chat).maybeSingle();
+  if (m) await quiet(tg(cfg, "editMessageText", { chat_id: chat, message_id: m.message_id, text: cardText(o), parse_mode: "HTML", disable_web_page_preview: true, reply_markup: cardKeyboard(o) }));
+}
+
+async function onOrderConfirmed(cfg: Cfg, orderId: string) {
+  const o = await loadOrder(orderId);
+  let sent = 0;
+  for (const g of (o.supplier_order_groups || []) as any[]) {
+    const chat = await chatOf("SUPPLIER", g.supplier_id);
+    if (chat) {
+      try {
+        const m = await tg(cfg, "sendMessage", { chat_id: chat, text: supplierText(o, g.supplier_id), parse_mode: "HTML", reply_markup: supplierKeyboard(o, g.supplier_id) });
+        await remember(o.id, chat, m.message_id, "SUPPLIER"); sent++;
+      } catch (e) { console.error(e); }
+    } else {
+      await sendToKind(cfg, "OWNER", `⚠️ <b>${esc(g.suppliers?.name || "Поставщик")}</b> не подключён к боту — перешлите ему заказ сами:\n\n` + supplierText(o, g.supplier_id));
+    }
+  }
+  await refreshOwner(cfg, o);
+  await refreshCourier(cfg, o);
+  return sent;
+}
+
+async function onOrderCancelled(cfg: Cfg, orderId: string) {
+  const o = await loadOrder(orderId);
+  const { data: msgs } = await db.from("telegram_messages").select("chat_id,message_id").eq("order_id", o.id).eq("kind", "SUPPLIER");
+  for (const m of msgs || []) {
+    await quiet(tg(cfg, "editMessageText", { chat_id: m.chat_id, message_id: m.message_id, text: `❌ <b>Заказ №${o.order_number} отменён</b> — не готовьте его.`, parse_mode: "HTML" }));
+    await quiet(tg(cfg, "sendMessage", { chat_id: m.chat_id, text: `❌ Заказ №${o.order_number} отменён — не готовьте его.` }));
+  }
+  await refreshOwner(cfg, o);
+  return (msgs || []).length;
+}
+
+async function onSupplierCallback(cfg: Cfg, q: any, act: string, id: string, arg: string) {
+  const answer = (text = "", alert = false) => quiet(tg(cfg, "answerCallbackQuery", { callback_query_id: q.id, text, show_alert: alert }));
+  const chat = q.message?.chat?.id, msg = q.message?.message_id;
+  const { data: link } = await db.from("telegram_links").select("ref_id").eq("kind", "SUPPLIER").eq("active", true).eq("chat_id", chat).maybeSingle();
+  if (!link) return answer("Вы не подключены как поставщик.", true);
+  let o = await loadOrder(id);
+  const sid = link.ref_id;
+  if (act === "miss") { await quiet(tg(cfg, "editMessageReplyMarkup", { chat_id: chat, message_id: msg, reply_markup: missingKeyboard(o, sid) })); return answer("Чего нет?"); }
+  if (act === "back") { await quiet(tg(cfg, "editMessageReplyMarkup", { chat_id: chat, message_id: msg, reply_markup: supplierKeyboard(o, sid) })); return answer(); }
+
+  const item = act === "mi" ? supplierItems(o, sid)[Number(arg)] : null;
+  if (act === "mi" && !item) return answer("Не нашёл товар", true);
+  const { data: r, error } = await db.rpc("tg_supplier", { p_chat: chat, p_order: id, p_action: act === "mi" ? "missing" : act, p_arg: item ? item.name_snapshot : null });
+  if (error) { console.error(error); return answer("Не получилось: " + error.message, true); }
+  if (r?.error === "cancelled") {
+    await quiet(tg(cfg, "editMessageText", { chat_id: chat, message_id: msg, text: `❌ Заказ №${o.order_number} отменён — не готовьте его.` }));
+    return answer("Заказ отменён", true);
+  }
+  if (r?.error) return answer(r.error === "not_yours" ? "В этом заказе нет ваших товаров." : "Не получилось", true);
+
+  o = await loadOrder(id);
+  await quiet(tg(cfg, "editMessageText", { chat_id: chat, message_id: msg, text: supplierText(o, sid), parse_mode: "HTML", reply_markup: supplierKeyboard(o, sid) }));
+  const driverChat = await chatOf("DRIVER", o.driverId);
+  if (act === "ready") {
+    if (driverChat) await quiet(tg(cfg, "sendMessage", { chat_id: driverChat, text: `✅ ${esc(r.supplier)}: заказ №${o.order_number} готов — можно забирать.`, parse_mode: "HTML" }));
+  } else {
+    const warn = `⚠️ У <b>${esc(r.supplier)}</b> нет: ${esc(item.name_snapshot)} (заказ №${o.order_number}). Позвоните клиенту и предложите замену.`;
+    if (driverChat) await quiet(tg(cfg, "sendMessage", { chat_id: driverChat, text: warn, parse_mode: "HTML" }));
+    await sendToKind(cfg, "OWNER", warn);
+  }
+  await refreshOwner(cfg, o);
+  await refreshCourier(cfg, o);
+  return answer(act === "ready" ? "Отмечено: готово" : "Курьер и владелец предупреждены");
+}
+
 // ---------- Telegram updates
 
 const WELCOME: Record<string, (label: string) => string> = {
@@ -252,6 +375,7 @@ async function onCallback(cfg: Cfg, q: any) {
   const answer = (text = "", alert = false) => quiet(tg(cfg, "answerCallbackQuery", { callback_query_id: q.id, text, show_alert: alert }));
   const chat = q.message?.chat?.id, msg = q.message?.message_id;
   const [kind, act, id, arg] = String(q.data || "").split("|");
+  if (kind === "s" && id && chat) return onSupplierCallback(cfg, q, act, id, arg ?? "");
   if (kind !== "c" || !id || !chat) return answer();
 
   if (act === "cm") { await quiet(tg(cfg, "editMessageReplyMarkup", { chat_id: chat, message_id: msg, reply_markup: reasonsKeyboard(id) })); return answer("Почему отменяем?"); }
@@ -323,6 +447,8 @@ Deno.serve(async (req) => {
       const b = await req.json();
       if (b.action === "order_created") return out({ sent: await onOrderCreated(cfg, b.order_id) });
       if (b.action === "remind") return out({ sent: await onRemind(cfg, b.order_id) });
+      if (b.action === "order_confirmed") return out({ sent: await onOrderConfirmed(cfg, b.order_id) });
+      if (b.action === "order_cancelled") return out({ sent: await onOrderCancelled(cfg, b.order_id) });
       return out({ error: "Unknown action" }, 400);
     }
 
