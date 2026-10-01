@@ -3,6 +3,8 @@
 //   1. Telegram webhook      — header X-Telegram-Bot-Api-Secret-Token = vault tg_webhook_secret
 //   2. The database (pg_net) — header x-internal-secret                = vault tg_internal_secret
 //   3. Admin panel           — Authorization: Bearer <staff JWT>, OWNER/ADMIN only
+// Couriers press buttons; every action goes through the database function tg_courier, which identifies the
+// courier by his Telegram chat and checks the order state — the message text is never trusted.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
@@ -32,39 +34,50 @@ async function tg(cfg: Cfg, method: string, payload: Record<string, unknown>) {
     body: JSON.stringify(payload),
   });
   const j = await r.json();
-  if (!j.ok) throw new Error(`Telegram ${method}: ${j.description || r.status}`);
+  if (!j.ok) {
+    if (String(j.description || "").includes("message is not modified")) return null;
+    throw new Error(`Telegram ${method}: ${j.description || r.status}`);
+  }
   return j.result;
 }
+const quiet = async (p: Promise<unknown>) => { try { await p; } catch (e) { console.error(e); } };
 
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
 const money = (n: unknown) => Number(n || 0).toFixed(2).replace(/\.00$/, "") + " ₾";
 const qty = (q: unknown, unit: string) => unit === "liter" ? `${Number(q)} л` : `${Number(q)} шт`;
 const time = (iso: string) =>
   new Date(iso).toLocaleString("ru-RU", { timeZone: "Asia/Tbilisi", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+const hm = (iso: string | null) => iso ? new Date(iso).toLocaleTimeString("ru-RU", { timeZone: "Asia/Tbilisi", hour: "2-digit", minute: "2-digit" }) : "";
+const PAY: Record<string, string> = { CASH: "💵 наличные", CARD: "💳 безнал", TRANSFER: "📲 перевод" };
 
-// ---------- Messages
+// ---------- Order data
 
-async function ownerOrderText(orderId: string) {
+async function loadOrder(orderId: string) {
   const { data: o, error } = await db.from("orders")
-    .select("order_number,fulfillment_type,address_snapshot,payment_method,discount_total,delivery_fee,total,comment,created_at," +
+    .select("id,order_number,status,fulfillment_type,address_snapshot,payment_method,discount_total,delivery_fee,total,comment," +
+      "created_at,confirmed_at,ready_at,delivered_at,cancellation_reason,city_id," +
       "customers(full_name,phone),service_cities(name),delivery_zones(name)," +
-      "order_items(name_snapshot,quantity,unit_snapshot,unit_price_snapshot,line_total,is_gift)")
+      "order_items(name_snapshot,quantity,unit_snapshot,unit_price_snapshot,line_total,is_gift)," +
+      "delivery_assignments(driver_id,drivers(name)),order_collections(method,created_at)")
     .eq("id", orderId).single();
   if (error) throw error;
+  const a: any = Array.isArray((o as any).delivery_assignments) ? (o as any).delivery_assignments[0] : (o as any).delivery_assignments;
+  const cols: any[] = ((o as any).order_collections || []).sort((x: any, y: any) => String(y.created_at).localeCompare(String(x.created_at)));
+  return { ...(o as any), driverId: a?.driver_id || null, driverName: a?.drivers?.name || null, paidWith: cols[0]?.method || null };
+}
+
+function orderBody(o: any) {
   const items = (o.order_items || []) as any[];
-  const lines = items.filter((i) => !i.is_gift).map((i) =>
-    `• ${esc(i.name_snapshot)} — ${qty(i.quantity, i.unit_snapshot)} × ${money(i.unit_price_snapshot)} = <b>${money(i.line_total)}</b>`);
-  const gifts = items.filter((i) => i.is_gift).map((i) => `🎁 ${esc(i.name_snapshot)} — ${qty(i.quantity, i.unit_snapshot)} (подарок)`);
   const delivery = o.fulfillment_type === "delivery";
-  const c = (o as any).customers || {};
+  const c = o.customers || {};
   return [
-    `🍺 <b>Новый заказ №${o.order_number}</b> · ${time(o.created_at)}`,
-    `📍 ${esc((o as any).service_cities?.name || "")} · ${delivery ? "🚗 Доставка" : "🏪 Самовывоз"}`,
+    `📍 ${esc(o.service_cities?.name || "")} · ${delivery ? "🚗 Доставка" : "🏪 Самовывоз"}`,
     `👤 ${esc(c.full_name || "Без имени")} · ${esc(c.phone || "")}`,
-    delivery ? `🏠 ${esc(o.address_snapshot || "—")}${(o as any).delivery_zones?.name ? " · " + esc((o as any).delivery_zones.name) : ""}` : null,
+    delivery ? `🏠 ${esc(o.address_snapshot || "—")}${o.delivery_zones?.name ? " · " + esc(o.delivery_zones.name) : ""}` : null,
     "",
-    ...lines,
-    ...gifts,
+    ...items.filter((i) => !i.is_gift).map((i) =>
+      `• ${esc(i.name_snapshot)} — ${qty(i.quantity, i.unit_snapshot)} × ${money(i.unit_price_snapshot)} = <b>${money(i.line_total)}</b>`),
+    ...items.filter((i) => i.is_gift).map((i) => `🎁 ${esc(i.name_snapshot)} — ${qty(i.quantity, i.unit_snapshot)} (подарок)`),
     "",
     Number(o.discount_total) > 0 ? `Скидка рывка: −${money(o.discount_total)}` : null,
     delivery ? `Доставка: ${money(o.delivery_fee)}` : null,
@@ -73,14 +86,130 @@ async function ownerOrderText(orderId: string) {
   ].filter((l) => l !== null).join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+function statusLine(o: any) {
+  const who = o.driverName ? ` · ${esc(o.driverName)}` : "";
+  switch (o.status) {
+    case "NEW": return o.driverName ? `🙋 Взял ${esc(o.driverName)} — звонит клиенту` : (o.fulfillment_type === "delivery" ? "⏳ Ждёт курьера" : "⏳ Новый");
+    case "CONFIRMED": return `✅ Принят ${hm(o.confirmed_at)}${who}`;
+    case "PREPARING": return `📦 Собирается${who}`;
+    case "OUT_FOR_DELIVERY": return `🚗 Едет с ${hm(o.ready_at)}${who}`;
+    case "DELIVERED": return `🎉 Доставлен ${hm(o.delivered_at)}${who}${o.paidWith ? " · " + PAY[o.paidWith] : ""}`;
+    case "CANCELLED": return `❌ Отменён${o.cancellation_reason ? ": " + esc(o.cancellation_reason) : ""}`;
+    default: return esc(o.status);
+  }
+}
+
+const ownerText = (o: any) => `🍺 <b>Заказ №${o.order_number}</b> · ${time(o.created_at)}\n${orderBody(o)}\n\n<b>Статус:</b> ${statusLine(o)}`;
+
+const offerText = (o: any) => {
+  const n = (o.order_items || []).filter((i: any) => !i.is_gift).length;
+  return `🆕 <b>Новый заказ №${o.order_number}</b> · ${hm(o.created_at)}\n📍 ${esc(o.service_cities?.name || "")}` +
+    `${o.delivery_zones?.name ? " · " + esc(o.delivery_zones.name) : ""}\n🏠 ${esc(o.address_snapshot || "—")}\n` +
+    `${n} поз. · <b>${money(o.total)}</b>\n\nКто возьмёт — звонит клиенту и подтверждает заказ.`;
+};
+
+const HINT: Record<string, string> = {
+  NEW: "📞 Позвоните клиенту, уточните заказ и адрес. Если всё верно — «Принят».",
+  CONFIRMED: "Заберите заказ и нажмите «Собран» — клиент увидит, что заказ едет.",
+  OUT_FOR_DELIVERY: "Отдали заказ? Выберите, как клиент заплатил:",
+};
+const cardText = (o: any) =>
+  `🛵 <b>Заказ №${o.order_number}</b> · ${time(o.created_at)}\n${orderBody(o)}\n\n<b>Статус:</b> ${statusLine(o)}` +
+  (HINT[o.status] ? `\n\n${HINT[o.status]}` : "");
+
+const cb = (act: string, id: string, arg = "") => `c|${act}|${id}${arg ? "|" + arg : ""}`;
+function cardKeyboard(o: any) {
+  const rows: any[] = [];
+  if (o.fulfillment_type === "delivery" && o.address_snapshot && ["NEW", "CONFIRMED", "OUT_FOR_DELIVERY"].includes(o.status)) {
+    rows.push([{ text: "🗺 Открыть на карте", url: "https://www.google.com/maps/search/?api=1&query=" +
+      encodeURIComponent(o.address_snapshot + ", " + (o.service_cities?.name || "")) }]);
+  }
+  if (o.status === "NEW") rows.push([{ text: "✅ Клиент подтвердил — Принят", callback_data: cb("accept", o.id) }]);
+  if (o.status === "CONFIRMED" || o.status === "PREPARING") rows.push([{ text: "📦 Собран — забрал заказ", callback_data: cb("ready", o.id) }]);
+  if (o.status === "OUT_FOR_DELIVERY") rows.push([
+    { text: "💵 Наличные", callback_data: cb("deliver", o.id, "cash") },
+    { text: "💳 Безнал", callback_data: cb("deliver", o.id, "card") },
+    { text: "📲 Перевод", callback_data: cb("deliver", o.id, "transfer") },
+  ]);
+  if (["NEW", "CONFIRMED", "PREPARING", "OUT_FOR_DELIVERY"].includes(o.status)) rows.push([{ text: "❌ Отменить заказ", callback_data: cb("cm", o.id) }]);
+  return { inline_keyboard: rows };
+}
+const reasonsKeyboard = (id: string) => ({
+  inline_keyboard: [
+    [{ text: "Передумал", callback_data: cb("cancel", id, "mind") }, { text: "Нет денег", callback_data: cb("cancel", id, "money") }],
+    [{ text: "Нет товара", callback_data: cb("cancel", id, "stock") }, { text: "Не дозвонились", callback_data: cb("cancel", id, "noanswer") }],
+    [{ text: "Другое", callback_data: cb("cancel", id, "other") }],
+    [{ text: "← Назад, не отменять", callback_data: cb("bk", id) }],
+  ],
+});
+
+// ---------- Sending
+
+async function linksOf(kind: string) {
+  const { data } = await db.from("telegram_links").select("chat_id,ref_id").eq("kind", kind).eq("active", true).not("chat_id", "is", null);
+  return data || [];
+}
+
 async function sendToKind(cfg: Cfg, kind: string, text: string) {
-  const { data: links } = await db.from("telegram_links").select("chat_id").eq("kind", kind).eq("active", true).not("chat_id", "is", null);
   let sent = 0;
-  for (const l of links || []) {
+  for (const l of await linksOf(kind)) {
     try { await tg(cfg, "sendMessage", { chat_id: l.chat_id, text, parse_mode: "HTML", disable_web_page_preview: true }); sent++; }
     catch (e) { console.error("send failed", l.chat_id, e); }
   }
   return sent;
+}
+
+async function remember(orderId: string, chat: number, message: number, kind: string) {
+  await db.from("telegram_messages").insert({ order_id: orderId, chat_id: chat, message_id: message, kind });
+}
+
+async function cityDrivers(cityId: string) {
+  const links = await linksOf("DRIVER");
+  if (!links.length) return [];
+  const { data: drivers } = await db.from("drivers").select("id").eq("active", true).eq("city_id", cityId);
+  const ids = new Set((drivers || []).map((d: any) => d.id));
+  return links.filter((l: any) => ids.has(l.ref_id));
+}
+
+async function onOrderCreated(cfg: Cfg, orderId: string) {
+  const o = await loadOrder(orderId);
+  let sent = 0;
+  for (const l of await linksOf("OWNER")) {
+    try {
+      const m = await tg(cfg, "sendMessage", { chat_id: l.chat_id, text: ownerText(o), parse_mode: "HTML", disable_web_page_preview: true });
+      await remember(o.id, l.chat_id, m.message_id, "OWNER_NEW"); sent++;
+    } catch (e) { console.error(e); }
+  }
+  if (o.fulfillment_type === "delivery" && o.status === "NEW") {
+    for (const l of await cityDrivers(o.city_id)) {
+      try {
+        const m = await tg(cfg, "sendMessage", {
+          chat_id: l.chat_id, text: offerText(o), parse_mode: "HTML",
+          reply_markup: { inline_keyboard: [[{ text: "🙋 Беру", callback_data: cb("take", o.id) }]] },
+        });
+        await remember(o.id, l.chat_id, m.message_id, "DRIVER_OFFER"); sent++;
+      } catch (e) { console.error(e); }
+    }
+  }
+  return sent;
+}
+
+// Owner's copy of the order keeps a live status line.
+async function refreshOwner(cfg: Cfg, o: any) {
+  const { data: msgs } = await db.from("telegram_messages").select("chat_id,message_id").eq("order_id", o.id).eq("kind", "OWNER_NEW");
+  for (const m of msgs || []) {
+    await quiet(tg(cfg, "editMessageText", { chat_id: m.chat_id, message_id: m.message_id, text: ownerText(o), parse_mode: "HTML", disable_web_page_preview: true }));
+  }
+}
+
+async function onRemind(cfg: Cfg, orderId: string) {
+  const o = await loadOrder(orderId);
+  if (o.status !== "NEW") return 0;
+  const drivers = await cityDrivers(o.city_id);
+  const why = o.driverName ? `${esc(o.driverName)} взял его, но ещё не подтвердил (не позвонил клиенту?)`
+    : drivers.length ? "никто из курьеров не взял" : "в этом городе нет курьеров, подключённых к боту";
+  return await sendToKind(cfg, "OWNER", `⏰ <b>Заказ №${o.order_number}</b> ждёт уже 5 минут: ${why}.\n` +
+    `👤 ${esc(o.customers?.full_name || "")} · ${esc(o.customers?.phone || "")} · ${money(o.total)}`);
 }
 
 // ---------- Telegram updates
@@ -88,13 +217,11 @@ async function sendToKind(cfg: Cfg, kind: string, text: string) {
 const WELCOME: Record<string, (label: string) => string> = {
   OWNER: () => "✅ Готово! Сюда будут приходить все новые заказы целиком.",
   SUPPLIER: (n) => `✅ Готово${n ? ", " + esc(n) : ""}! Сюда будут приходить заказы для подготовки — только ваши товары.`,
-  DRIVER: (n) => `✅ Готово${n ? ", " + esc(n) : ""}! Сюда будут приходить заказы на доставку.`,
+  DRIVER: (n) => `✅ Готово${n ? ", " + esc(n) : ""}! Сюда будут приходить новые заказы вашего города. Нажмите «🙋 Беру», позвоните клиенту — и дальше по кнопкам.`,
 };
 
-async function onUpdate(cfg: Cfg, u: any) {
-  const m = u.message;
-  if (!m?.text || !m.chat?.id) return;
-  const start = m.text.match(/^\/start(?:\s+([a-f0-9]{8,64}))?/i);
+async function onStart(cfg: Cfg, m: any) {
+  const start = String(m.text || "").match(/^\/start(?:\s+([a-f0-9]{8,64}))?/i);
   if (!start) return;
   const code = start[1];
   const { data: link } = code
@@ -108,6 +235,66 @@ async function onUpdate(cfg: Cfg, u: any) {
     chat_id: m.chat.id, tg_username: m.from?.username || null, linked_at: new Date().toISOString(),
   }).eq("id", link.id);
   await tg(cfg, "sendMessage", { chat_id: m.chat.id, text: WELCOME[link.kind](link.label || ""), parse_mode: "HTML" });
+}
+
+const ERR: Record<string, string> = {
+  not_driver: "Вы не подключены как курьер. Попросите ссылку у владельца.",
+  not_yours: "Этот заказ у другого курьера.",
+  no_order: "Заказ не найден.",
+  method: "Не понял способ оплаты.",
+};
+const STATE: Record<string, string> = {
+  NEW: "новый", CONFIRMED: "уже принят", PREPARING: "уже собирается", OUT_FOR_DELIVERY: "уже в пути",
+  DELIVERED: "уже доставлен", CANCELLED: "уже отменён", REFUNDED: "возвращён",
+};
+
+async function onCallback(cfg: Cfg, q: any) {
+  const answer = (text = "", alert = false) => quiet(tg(cfg, "answerCallbackQuery", { callback_query_id: q.id, text, show_alert: alert }));
+  const chat = q.message?.chat?.id, msg = q.message?.message_id;
+  const [kind, act, id, arg] = String(q.data || "").split("|");
+  if (kind !== "c" || !id || !chat) return answer();
+
+  if (act === "cm") { await quiet(tg(cfg, "editMessageReplyMarkup", { chat_id: chat, message_id: msg, reply_markup: reasonsKeyboard(id) })); return answer("Почему отменяем?"); }
+  if (act === "bk") {
+    const o = await loadOrder(id);
+    await quiet(tg(cfg, "editMessageReplyMarkup", { chat_id: chat, message_id: msg, reply_markup: cardKeyboard(o) }));
+    return answer();
+  }
+
+  const { data: r, error } = await db.rpc("tg_courier", { p_chat: chat, p_order: id, p_action: act, p_arg: arg || null });
+  if (error) { console.error(error); return answer("Не получилось: " + error.message, true); }
+  const o = await loadOrder(id);
+
+  if (r?.error === "taken") {
+    await quiet(tg(cfg, "editMessageText", { chat_id: chat, message_id: msg, text: `Заказ №${o.order_number} взял ${esc(r.by)}.`, parse_mode: "HTML" }));
+    return answer(`Уже взял ${r.by}`);
+  }
+  if (r?.error === "state") {
+    await quiet(tg(cfg, "editMessageText", { chat_id: chat, message_id: msg, text: cardText(o), parse_mode: "HTML", reply_markup: o.driverId ? cardKeyboard(o) : undefined }));
+    return answer(`Заказ ${STATE[r.status] || r.status}`, true);
+  }
+  if (r?.error) return answer(ERR[r.error] || "Не получилось", true);
+
+  // Success: this courier's card shows the current step; the owner's copy gets the new status.
+  await quiet(tg(cfg, "editMessageText", { chat_id: chat, message_id: msg, text: cardText(o), parse_mode: "HTML", disable_web_page_preview: true, reply_markup: cardKeyboard(o) }));
+  if (act === "take") {
+    const { data: offers } = await db.from("telegram_messages").select("chat_id,message_id").eq("order_id", id).eq("kind", "DRIVER_OFFER");
+    for (const m of offers || []) {
+      if (m.chat_id === chat) continue;
+      await quiet(tg(cfg, "editMessageText", { chat_id: m.chat_id, message_id: m.message_id, text: `Заказ №${o.order_number} взял ${esc(r.driver)}.` }));
+    }
+  }
+  await refreshOwner(cfg, o);
+  if (act === "cancel") {
+    await sendToKind(cfg, "OWNER", `❌ <b>Заказ №${o.order_number} отменён</b> — ${esc(o.cancellation_reason || "")}\n` +
+      `👤 ${esc(o.customers?.full_name || "")} · ${esc(o.customers?.phone || "")} · ${money(o.total)}`);
+  }
+  return answer({ take: "Заказ ваш — позвоните клиенту", accept: "Принят", ready: "Клиент видит: едет", deliver: "Доставлен 🎉", cancel: "Отменён" }[act] || "");
+}
+
+async function onUpdate(cfg: Cfg, u: any) {
+  if (u.callback_query) return onCallback(cfg, u.callback_query);
+  if (u.message?.text && u.message.chat?.id) return onStart(cfg, u.message);
 }
 
 // ---------- Admin
@@ -134,7 +321,8 @@ Deno.serve(async (req) => {
     if (req.headers.get("x-internal-secret")) {
       if (req.headers.get("x-internal-secret") !== cfg.internal) return out({ error: "Forbidden" }, 403);
       const b = await req.json();
-      if (b.action === "order_created") return out({ sent: await sendToKind(cfg, "OWNER", await ownerOrderText(b.order_id)) });
+      if (b.action === "order_created") return out({ sent: await onOrderCreated(cfg, b.order_id) });
+      if (b.action === "remind") return out({ sent: await onRemind(cfg, b.order_id) });
       return out({ error: "Unknown action" }, 400);
     }
 
@@ -155,7 +343,7 @@ Deno.serve(async (req) => {
     if (b.action === "test_order") {
       const { data: o } = await db.from("orders").select("id").order("created_at", { ascending: false }).limit(1).single();
       if (!o) return out({ error: "Заказов пока нет" }, 400);
-      return out({ ok: true, sent: await sendToKind(cfg, "OWNER", "🧪 Пример (последний заказ):\n\n" + await ownerOrderText(o.id)) });
+      return out({ ok: true, sent: await sendToKind(cfg, "OWNER", "🧪 Пример (последний заказ):\n\n" + ownerText(await loadOrder(o.id))) });
     }
     return out({ error: "Unknown action" }, 400);
   } catch (e) {
