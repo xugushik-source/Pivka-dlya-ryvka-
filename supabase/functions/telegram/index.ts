@@ -400,6 +400,140 @@ async function onSupplierCallback(cfg: Cfg, q: any, act: string, id: string, arg
   return answer(act === "ready" ? "Отмечено: готово" : "Курьер и владелец предупреждены");
 }
 
+// ---------- End of day for suppliers (00:05 Tbilisi): total, «Сходится / Не сходится», owner's «Оплачено»
+
+const ddmm = (day: string) => `${day.slice(8, 10)}.${day.slice(5, 7)}`;
+const plural = (n: number) => n % 10 === 1 && n % 100 !== 11 ? "заказ" : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? "заказа" : "заказов";
+
+async function loadSettlement(id: string) {
+  const { data: st, error } = await db.from("supplier_settlements").select("*,suppliers(name)").eq("id", id).single();
+  if (error) throw error;
+  const { data: prev } = await db.from("supplier_settlements").select("settlement_date,amount")
+    .eq("supplier_id", st.supplier_id).eq("status", "OPEN").lt("settlement_date", st.settlement_date).order("settlement_date");
+  const debt = (prev || []).reduce((t: number, x: any) => t + Number(x.amount), 0);
+  return { ...st, prev: prev || [], debt, due: debt + Number(st.amount) };
+}
+
+function supplierDayText(st: any) {
+  const d = st.details || {};
+  const lines = (d.lines || []) as any[];
+  const poured = (d.poured_lines || []) as any[];
+  const row = (l: any) => `${esc(l.name)} — ${qty(l.qty, l.unit)} × ${money(l.cost)} = <b>${money(l.sum)}</b>`;
+  return [
+    `📊 <b>Итог за ${ddmm(st.settlement_date)}</b> · Пивка для рывка`,
+    `Доставлено: ${st.orders_count} ${plural(st.orders_count)}`,
+    "",
+    ...lines.map((l) => `${l.gift ? "🎁" : "•"} ${row(l)}${l.gift ? " (подарок клиенту)" : ""}`),
+    poured.length ? "\n🍺 Разлито, но клиент не взял (оплачиваем вам):" : null,
+    ...poured.map((l) => `• ${row(l)}`),
+    "",
+    `<b>За день: ${money(st.amount)}</b>`,
+    st.debt > 0 ? `Не оплачено за прошлые дни: ${money(st.debt)} (${st.prev.map((x: any) => ddmm(x.settlement_date)).join(", ")})` : null,
+    st.debt > 0 ? `<b>Итого к оплате: ${money(st.due)}</b>` : null,
+    "",
+    st.status === "PAID" ? `💸 Оплачено ${hm(st.paid_at)}`
+      : st.supplier_status === "AGREED" ? "✅ Вы подтвердили — всё сходится. Оплата утром."
+      : st.supplier_status === "DISPUTED" ? (st.supplier_note ? `❌ Вы написали: «${esc(st.supplier_note)}». Владелец разберётся.` : "❌ Напишите одним сообщением, что не сходится 👇")
+      : "Проверьте, пожалуйста: всё сходится?",
+  ].filter((l) => l !== null).join("\n").replace(/\n{3,}/g, "\n\n");
+}
+const dcb = (act: string, id: string) => `d|${act}|${id}`;
+const supplierDayKeyboard = (st: any) => ({
+  inline_keyboard: st.status === "OPEN" && st.supplier_status === "SENT"
+    ? [[{ text: "✅ Сходится", callback_data: dcb("ok", st.id) }, { text: "❌ Не сходится", callback_data: dcb("bad", st.id) }]] : [],
+});
+
+function ownerDayText(st: any, linked: boolean) {
+  const d = st.details || {};
+  const reply = !linked ? "⚠️ не подключён к боту — перешлите ему итог"
+    : st.supplier_status === "AGREED" ? "✅ сходится"
+    : st.supplier_status === "DISPUTED" ? `❌ не сходится${st.supplier_note ? ": «" + esc(st.supplier_note) + "»" : " (ждём, что напишет)"}`
+    : "⏳ ещё не ответил";
+  return [
+    `📊 <b>${esc(st.suppliers?.name || "Поставщик")} · итог за ${ddmm(st.settlement_date)}</b>`,
+    `За день: ${money(st.amount)} (${st.orders_count} ${plural(st.orders_count)})${Number(d.poured) > 0 ? ` · из них разлитое пиво ${money(d.poured)}` : ""}`,
+    st.debt > 0 ? `Долг за прошлые дни: ${money(st.debt)}` : null,
+    `<b>К оплате: ${money(st.due)}</b>`,
+    `Поставщик: ${reply}`,
+    st.status === "PAID" ? `💸 Оплачено ${time(st.paid_at)}` : null,
+  ].filter((l) => l !== null).join("\n");
+}
+const ownerDayKeyboard = (st: any) => ({
+  inline_keyboard: st.status === "OPEN" ? [[{ text: `💸 Оплачено ${money(st.due)}`, callback_data: dcb("paid", st.id) }]] : [],
+});
+
+async function refreshDay(cfg: Cfg, id: string) {
+  const st = await loadSettlement(id);
+  const tgm = st.tg || {};
+  const linked = !!(await chatOf("SUPPLIER", st.supplier_id));
+  for (const [chat, msg] of (tgm.owner || []) as [number, number][]) {
+    await quiet(tg(cfg, "editMessageText", { chat_id: chat, message_id: msg, text: ownerDayText(st, linked), parse_mode: "HTML", reply_markup: ownerDayKeyboard(st) }));
+  }
+  if (tgm.supplier) {
+    await quiet(tg(cfg, "editMessageText", { chat_id: tgm.supplier[0], message_id: tgm.supplier[1], text: supplierDayText(st), parse_mode: "HTML", reply_markup: supplierDayKeyboard(st) }));
+  }
+  return st;
+}
+
+async function onSupplierDay(cfg: Cfg, ids: string[]) {
+  let sent = 0;
+  for (const id of ids) {
+    const st = await loadSettlement(id);
+    const chat = await chatOf("SUPPLIER", st.supplier_id);
+    const tgm: any = { owner: [] };
+    if (chat) {
+      try {
+        const m = await tg(cfg, "sendMessage", { chat_id: chat, text: supplierDayText(st), parse_mode: "HTML", reply_markup: supplierDayKeyboard(st) });
+        tgm.supplier = [chat, m.message_id]; sent++;
+      } catch (e) { console.error(e); }
+    } else {
+      await sendToKind(cfg, "OWNER", `⚠️ <b>${esc(st.suppliers?.name || "Поставщик")}</b> не подключён к боту — перешлите ему итог:\n\n${supplierDayText(st)}`);
+    }
+    for (const l of await linksOf("OWNER")) {
+      try {
+        const m = await tg(cfg, "sendMessage", { chat_id: l.chat_id, text: ownerDayText(st, !!chat), parse_mode: "HTML", reply_markup: ownerDayKeyboard(st) });
+        tgm.owner.push([l.chat_id, m.message_id]);
+      } catch (e) { console.error(e); }
+    }
+    await db.from("supplier_settlements").update({ tg: tgm }).eq("id", id);
+  }
+  return sent;
+}
+
+// Owner paid (bot button or admin): every day that was closed by this payment shows «Оплачено»; the supplier is told.
+async function onSupplierPaid(cfg: Cfg, supplierId: string, amount: number) {
+  const { data: days } = await db.from("supplier_settlements").select("id,settlement_date").eq("supplier_id", supplierId)
+    .eq("status", "PAID").gte("paid_at", new Date(Date.now() - 5 * 60000).toISOString()).order("settlement_date");
+  for (const d of days || []) await refreshDay(cfg, d.id);
+  const chat = await chatOf("SUPPLIER", supplierId);
+  if (chat && days?.length) {
+    await quiet(tg(cfg, "sendMessage", { chat_id: chat, parse_mode: "HTML",
+      text: `💸 Владелец отметил оплату <b>${money(amount)}</b> за ${days.map((d: any) => ddmm(d.settlement_date)).join(", ")}. Спасибо!` }));
+  }
+  return days?.length || 0;
+}
+
+async function onDayCallback(cfg: Cfg, q: any, act: string, id: string) {
+  const answer = (text = "", alert = false) => quiet(tg(cfg, "answerCallbackQuery", { callback_query_id: q.id, text, show_alert: alert }));
+  const chat = q.message?.chat?.id;
+  const { data: r, error } = await db.rpc("tg_supplier_day", { p_chat: chat, p_settlement: id, p_action: act });
+  if (error) { console.error(error); return answer("Не получилось: " + error.message, true); }
+  if (r?.error === "already") { await refreshDay(cfg, id); return answer("Уже оплачено"); }
+  if (r?.error) return answer(r.error === "forbidden" ? "Эта кнопка не для вас." : "Не получилось", true);
+  if (act === "paid") { await onSupplierPaid(cfg, (await loadSettlement(id)).supplier_id, Number(r.amount)); return answer("Отмечено: оплачено"); }
+  await refreshDay(cfg, id);
+  return answer(act === "ok" ? "Спасибо!" : "Напишите, что не так");
+}
+
+// After «Не сходится» the supplier writes what is wrong as a normal message.
+async function onText(cfg: Cfg, m: any) {
+  const { data: r } = await db.rpc("tg_supplier_day", { p_chat: m.chat.id, p_settlement: null, p_action: "note", p_note: String(m.text).slice(0, 500) });
+  if (!r?.ok) return;
+  const st = await refreshDay(cfg, r.id);
+  await quiet(tg(cfg, "sendMessage", { chat_id: m.chat.id, text: "Спасибо, передали владельцу." }));
+  await sendToKind(cfg, "OWNER", `❌ <b>${esc(st.suppliers?.name || "Поставщик")}</b>: итог за ${ddmm(st.settlement_date)} не сходится — «${esc(st.supplier_note)}»`);
+}
+
 // ---------- Telegram updates
 
 const WELCOME: Record<string, (label: string) => string> = {
@@ -441,6 +575,7 @@ async function onCallback(cfg: Cfg, q: any) {
   const chat = q.message?.chat?.id, msg = q.message?.message_id;
   const [kind, act, id, arg] = String(q.data || "").split("|");
   if (kind === "s" && id && chat) return onSupplierCallback(cfg, q, act, id, arg ?? "");
+  if (kind === "d" && id && chat) return onDayCallback(cfg, q, act, id);
   if (kind !== "c" || !id || !chat) return answer();
 
   if (act === "cm") { await quiet(tg(cfg, "editMessageReplyMarkup", { chat_id: chat, message_id: msg, reply_markup: reasonsKeyboard(id) })); return answer("Почему отменяем?"); }
@@ -483,7 +618,7 @@ async function onCallback(cfg: Cfg, q: any) {
 
 async function onUpdate(cfg: Cfg, u: any) {
   if (u.callback_query) return onCallback(cfg, u.callback_query);
-  if (u.message?.text && u.message.chat?.id) return onStart(cfg, u.message);
+  if (u.message?.text && u.message.chat?.id) return /^\/start/.test(u.message.text) ? onStart(cfg, u.message) : onText(cfg, u.message);
 }
 
 // ---------- Order edit page inside Telegram (Mini App)
@@ -546,6 +681,8 @@ Deno.serve(async (req) => {
       if (b.action === "order_confirmed") return out({ sent: await onOrderConfirmed(cfg, b.order_id) });
       if (b.action === "order_cancelled") return out({ sent: await onOrderCancelled(cfg, b.order_id) });
       if (b.action === "order_edited") return out({ sent: await onOrderEdited(cfg, b) });
+      if (b.action === "supplier_day") return out({ sent: await onSupplierDay(cfg, b.ids || []) });
+      if (b.action === "supplier_paid") return out({ sent: await onSupplierPaid(cfg, b.supplier_id, Number(b.amount)) });
       return out({ error: "Unknown action" }, 400);
     }
 
