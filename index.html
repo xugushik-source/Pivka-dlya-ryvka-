@@ -172,14 +172,15 @@
 <button type="button" class="feat" onclick="openSocial('BET')"><span class="fi">🍺</span><b>Спорим на пиво?</b><small>Проигравший платит</small></button>
 <button type="button" class="feat" onclick="openPass()"><span class="fi">👑</span><b>PASS</b><small>Доставка 0 ₾ от 20 ₾ · 10 ₾/мес</small></button>
 </div>
-<div id="lastOrder" class="trackCard" hidden></div>
-<button type="button" class="repeatLink" id="repeatQuick" onclick="openRepeat()">🔁 Повторить прошлый заказ →</button>
 </section>
 
 <section class="block" id="bundlesSection">
 <div class="sec-head"><h2 class="sec-title"><span class="mask"><span>Готовые рывки</span></span></h2><p class="muted">Уже всё подобрали — быстрее и выгоднее</p></div>
 <div class="bundles" id="bundles"><div class="empty">Загружаем рывки…</div></div>
 <button type="button" class="notyours" onclick="goBuild()">Не твой рывок? <b>Собери свой →</b></button>
+<!-- Last order goes after the ready-made «рывки»: those come first, right after Угости / Спорим / PASS. -->
+<div id="lastOrder" class="trackCard" hidden></div>
+<button type="button" class="repeatLink" id="repeatQuick" onclick="openRepeat()">🔁 Повторить прошлый заказ →</button>
 </section>
 
 <section class="block" id="buildSection">
