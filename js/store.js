@@ -980,8 +980,13 @@ async function submitCheckout() {
   }
   const phone = coPhone.value.trim(),
     address = coAddress.value.trim();
-  if (phone.length < 6) {
+  if (!phone) {
     coError.textContent = 'Укажи номер телефона';
+    return
+  }
+  // Georgian number (9 digits or +995, as the browser autofills it) or any international number with «+».
+  if (!phoneOk(phone) && !/^\+\d{10,15}$/.test(phone.replace(/[\s()-]/g, ''))) {
+    coError.textContent = 'Введите номер полностью, например 591 24 40 75';
     return
   }
   if (fulfillment === 'delivery' && !address) {
