@@ -121,7 +121,7 @@ function openRepeat() {
 }
 async function findRepeat() {
   const phone = repeatPhone.value.trim();
-  if (phone.replace(/\D/g, '').length < 9) {
+  if (!phoneOk(phone)) {
     repeatResult.innerHTML = '<div class="error">Введите номер полностью, например 591 24 40 75</div>';
     return
   }
@@ -133,7 +133,8 @@ async function findRepeat() {
       return
     }
     repeatItems = r.items || [];
-    const unavailable = (r.items || []).filter(i => !i.active || Number(i.available) < Number(i.quantity));
+    // Stock is not checked: supplier goods have no stock in the database, so only switched-off products count as missing.
+    const unavailable = (r.items || []).filter(i => !i.active);
     repeatResult.innerHTML = '<h3>Заказ №' + r.order_number + '</h3>' + (r.items || []).map(i => '<div class="line row"><span>' + esc(i.name) + ' × ' + i.quantity + '</span><b>' + money(Number(i.current_price) * Number(i.quantity)) + '</b></div>').join('') + (unavailable.length ? '<div class="error">Некоторых товаров сейчас не хватает. Добавим доступные, остальные можно заменить вручную.</div>' : '') + '<button class="yellow checkout" onclick="applyRepeat()">Добавить в корзину →</button>'
   } catch (e) {
     repeatResult.innerHTML = '<div class="error">Не получилось найти заказ — проверьте интернет и попробуйте ещё раз.</div>'
@@ -157,6 +158,137 @@ function applyRepeat() {
   closeSheet('repeatOverlay');
   openCart()
 }
+
+// 9 digits (591 24 40 75) or with the country code (+995 591 24 40 75).
+function phoneOk(v) {
+  const d = String(v || '').replace(/\D/g, '');
+  return d.length === 9 || (d.length === 12 && d.startsWith('995'))
+}
+
+// Order status for the customer. The browser keeps the id of the order it just placed (a random uuid) and asks the
+// database for its status — no phone, no login. Steps: Получен → Принят → Собран → (30 s) Едет → Доставлен / Отменён.
+const TRACK_KEY = 'pivka_last_order';
+const TRACK_KEEP_MS = 3 * 3600e3; // the card stays for 3 hours after the order is delivered or cancelled
+let trackTimer = null;
+
+function trackSaved() {
+  try {
+    return JSON.parse(localStorage.getItem(TRACK_KEY) || 'null')
+  } catch (e) {
+    return null
+  }
+}
+
+function trackTime(v) {
+  return v ? new Date(v).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tbilisi' }) : ''
+}
+
+// Server time now, estimated from the poll answer (the phone clock may be off).
+function trackNow(o) {
+  return new Date(o.now).getTime() + (Date.now() - o._at)
+}
+
+function trackSteps(o) {
+  const pickup = o.fulfillment === 'pickup';
+  const goAt = o.ready_at ? new Date(o.ready_at).getTime() + 30e3 : null; // «Едет» comes 30 s after «Собран»
+  const going = goAt && trackNow(o) >= goAt;
+  const steps = pickup ?
+    [['Получен', o.created_at], ['Принят', o.confirmed_at], ['Готов — можно забирать', o.ready_at], ['Забран', o.delivered_at]] :
+    [['Получен', o.created_at], ['Принят', o.confirmed_at], ['Собран', o.ready_at], ['Едет', going ? goAt : null], ['Доставлен', o.delivered_at]];
+  if (o.status === 'CANCELLED' || o.status === 'REFUNDED') {
+    return steps.filter(s => s[1]).map(s => [s[0], s[1], 'done']).concat([['Отменён', o.cancelled_at, 'cancel']])
+  }
+  const cur = {
+    NEW: 0,
+    CONFIRMED: 1,
+    PREPARING: 1,
+    OUT_FOR_DELIVERY: !pickup && going ? 3 : 2,
+    DELIVERED: steps.length - 1
+  } [o.status] ?? 0;
+  const done = o.status === 'DELIVERED';
+  return steps.map((s, i) => [s[0], i <= cur ? s[1] : null, i < cur || done ? 'done' : i === cur ? 'now' : ''])
+}
+
+let trackTick = null;
+function renderTrack(o) {
+  const box = document.getElementById('orderTrack');
+  if (!box) return;
+  clearTimeout(trackTick);
+  box.innerHTML = '<div class="trackHead"><b>Ваш заказ</b><span>Заказ №' + esc(o.order_number) + '</span></div><ol class="track">' +
+    trackSteps(o).map(s => '<li class="' + s[2] + '"><i></i><span>' + esc(s[0]) + '</span><time>' + trackTime(s[1]) + '</time></li>').join('') + '</ol>';
+  box.hidden = false;
+  if (o.status === 'OUT_FOR_DELIVERY' && o.fulfillment !== 'pickup' && o.ready_at) {
+    // Switch «Собран» → «Едет» exactly on time, without waiting for the next poll.
+    const left = new Date(o.ready_at).getTime() + 30e3 - trackNow(o);
+    if (left > 0) trackTick = setTimeout(() => renderTrack(o), left + 300)
+  }
+}
+
+async function refreshTrack() {
+  clearTimeout(trackTimer);
+  const saved = trackSaved();
+  const box = document.getElementById('orderTrack');
+  if (!saved || !saved.id || !box) {
+    if (box) box.hidden = true;
+    return false
+  }
+  try {
+    const o = await PIVKA_DB.orderTrack(saved.id);
+    if (!o) throw new Error('gone');
+    o._at = Date.now();
+    const end = o.delivered_at || o.cancelled_at;
+    if (end && new Date(o.now) - new Date(end) > TRACK_KEEP_MS) throw new Error('old');
+    renderTrack(o);
+    if (!['DELIVERED', 'CANCELLED', 'REFUNDED'].includes(o.status)) trackTimer = setTimeout(refreshTrack, 20e3);
+    return true
+  } catch (e) {
+    if (e.message === 'gone' || e.message === 'old') {
+      try { localStorage.removeItem(TRACK_KEY) } catch (x) {}
+      box.hidden = true;
+      return false
+    }
+    trackTimer = setTimeout(refreshTrack, 30e3); // no internet: keep the last shown state and try again
+    return !box.hidden
+  }
+}
+
+// Last order on the home page: shown without any input when the phone was saved at checkout.
+let lastOrderItems = [];
+async function renderLastOrder() {
+  const box = document.getElementById('lastOrder');
+  if (!box) return;
+  let phone = '';
+  try {
+    phone = JSON.parse(localStorage.getItem('pivka_profile') || '{}').phone || ''
+  } catch (e) {}
+  if (!phoneOk(phone)) return;
+  try {
+    const r = await PIVKA_DB.getRepeatOrder(phone);
+    if (!r || !r.found || !(r.items || []).length) return;
+    lastOrderItems = r.items;
+    const names = r.items.slice(0, 3).map(i => esc(i.name) + ' × ' + Number(i.quantity)).join(', ') + (r.items.length > 3 ? ' +' + (r.items.length - 3) : '');
+    box.innerHTML = '<div class="trackHead"><b>🔁 Ваш прошлый заказ</b><span>№' + esc(r.order_number) + '</span></div><div class="lastItems">' + names + '</div>' +
+      '<div class="lastBtns"><button type="button" class="yellow" onclick="repeatLast()">Повторить →</button><button type="button" class="skip" onclick="openRepeat()">Другой номер</button></div>';
+    box.hidden = false;
+    const quick = document.getElementById('repeatQuick');
+    if (quick) quick.hidden = true
+  } catch (e) {
+    console.warn(e)
+  }
+}
+
+function repeatLast() {
+  repeatItems = lastOrderItems;
+  applyRepeat()
+}
+
+async function initOrderTrack() {
+  // While the status card is shown it is the same order, so the «last order» card would only repeat it.
+  if (!(await refreshTrack())) renderLastOrder()
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && trackSaved()) refreshTrack()
+});
 
 function openPass() {
   passOverlay.classList.add('on')
@@ -901,8 +1033,15 @@ async function submitCheckout() {
     const waItems = (checkoutBundle ? checkoutBundle.name + ' (' + (checkoutBundle.items || []).map(i => i.name + ' × ' + Number(i.quantity)).join(', ') + ')' + (items.length ? '\n' : '') : '') + Object.values(cart).map(x => x.p.name + ' × ' + x.qty).join('\n');
     const waText = '🍻 НОВЫЙ ЗАКАЗ №' + r.order_number + '\n' + waItems + '\n\nДоставка: ' + (fulfillment === 'delivery' ? money(r.delivery_fee || 0) + (r.delivery_reason === 'PASS' ? ' (PASS)' : '') : '—') + '\nСумма: ' + money(r.total) + '\nТелефон: ' + phone + '\n' + (fulfillment === 'delivery' ? 'Адрес: ' + address + '\nЗона: ' + coZone.options[coZone.selectedIndex].text : 'Самовывоз') + (fulfillment === 'pickup' ? '\nВремя: через ' + coPickupTime.value + ' мин' : '') + '\nОплата: ' + (coPayment.value === 'cash' ? 'Наличными' : 'Переводом') + (coComment.value.trim() ? '\nКомментарий: ' + coComment.value.trim() : '');
     track('order_complete', { bundleId: checkoutBundle?.id || null, metadata: { order_number: r.order_number, total: Number(r.total) } });
+    try {
+      if (r.order_id) localStorage.setItem(TRACK_KEY, JSON.stringify({ id: r.order_id, n: r.order_number }))
+    } catch (e) {}
     const waUrl = 'https://wa.me/995579145634?text=' + encodeURIComponent(waText);
     checkoutBody.innerHTML = `<div class="success"><div class="big">🍻</div><h2>Рывок принят!</h2><p class="muted">Заказ №${r.order_number}<br>Сумма: ${money(r.total)}</p><a class="yellow checkout" style="display:block;text-decoration:none" href="${waUrl}" target="_blank" rel="noopener">Отправить заказ в WhatsApp →</a><button class="skip" onclick="try{sessionStorage.setItem('pivka_intro_short','1')}catch(e){};location.reload()">Готово</button></div>`;
+    // The same status card as on the home page: the customer comes back from WhatsApp and sees where the order is.
+    checkoutBody.querySelector('.success').insertAdjacentHTML('beforeend', '<div id="orderTrack" class="trackCard" hidden></div>');
+    document.querySelector('#todaySection #orderTrack')?.remove();
+    refreshTrack();
     setTimeout(() => {
       location.href = waUrl
     }, 350);
@@ -1195,3 +1334,4 @@ function detectLang() {
 }
 document.documentElement.lang = detectLang();
 document.addEventListener('DOMContentLoaded', () => setLang(detectLang()));
+initOrderTrack();
