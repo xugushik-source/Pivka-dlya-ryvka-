@@ -80,6 +80,11 @@ html[lang=ka] .brand,html[lang=hy] .brand{line-height:1.12}
     const x = (q.get(k) || '').trim();
     if (/^[\w.-]{1,40}$/.test(x)) camp[k] = x;
   });
+  // Short friend link «/qr/?r=<ref>&o=<origin spot>» (what «Подлови друга» sends) = the full friend campaign.
+  const short = { r: 'ref', o: 'origin_spot', c: 'utm_campaign' };
+  Object.keys(short).forEach(k => { const x = (q.get(k) || '').trim(); if (/^[\w.-]{1,40}$/.test(x) && !camp[short[k]]) camp[short[k]] = x });
+  if (camp.ref && !camp.utm_source) Object.assign(camp, { utm_source: 'friend', utm_medium: 'share' });
+  if (camp.ref && !camp.utm_campaign) camp.utm_campaign = 'guys';
   if (!camp.origin_spot && camp.spot) camp.origin_spot = camp.spot;
   camp.at = new Date().toISOString();
   store('pivka_campaign', JSON.stringify(camp));

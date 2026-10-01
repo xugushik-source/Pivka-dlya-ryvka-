@@ -1371,17 +1371,19 @@ function catchFriendUrl() {
     }
   } catch (e) {}
   const c = campaignInfo()?.last || {};
+  // Short on purpose: /qr/?r=<ref>&o=<spot>; the teaser page expands it to utm_source=friend&utm_medium=share&…
   const u = new URL('qr/', location.href.split(/[?#]/)[0].replace(/[^/]*$/, ''));
-  const p = new URLSearchParams({ utm_source: 'friend', utm_medium: 'share', utm_campaign: c.utm_campaign || 'guys' });
-  if (ref) p.set('ref', ref);
-  if (c.origin_spot || c.spot) p.set('origin_spot', c.origin_spot || c.spot);
+  const p = new URLSearchParams();
+  if (ref) p.set('r', ref);
+  if (c.origin_spot || c.spot) p.set('o', c.origin_spot || c.spot);
+  if (c.utm_campaign && c.utm_campaign !== 'guys') p.set('c', c.utm_campaign);
   u.search = p.toString();
   return u.href
 }
 async function catchFriend() {
   const url = catchFriendUrl();
   const text = (CATCH_TEXT[lang()] || CATCH_TEXT.ru) + '\n' + url;
-  const meta = { ref: new URL(url).searchParams.get('ref'), origin_spot: new URL(url).searchParams.get('origin_spot') };
+  const meta = { ref: new URL(url).searchParams.get('r'), origin_spot: new URL(url).searchParams.get('o') };
   if (navigator.share) {
     try {
       await navigator.share({ text });
@@ -1405,7 +1407,7 @@ async function copyCatchLink() {
     try { document.execCommand('copy') } catch (x) {}
   }
   catchCopy.textContent = 'Скопировано ✓';
-  track('qr_share', { metadata: { ref: new URL(catchLink.value).searchParams.get('ref'), method: 'copy' } })
+  track('qr_share', { metadata: { ref: new URL(catchLink.value).searchParams.get('r'), method: 'copy' } })
 }
 (() => {
   let seen = false;
