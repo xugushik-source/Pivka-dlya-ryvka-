@@ -286,7 +286,7 @@ async function activatePass() {
   }
   try {
     const r = await PIVKA_DB.startPass(passName.value.trim(), passPhone.value.trim());
-    passBody.innerHTML = '<div class="success"><div class="big">👑</div><h2>PASS подготовлен</h2><p class="muted">10 ₾ / месяц. Оплатите переводом — после оплаты мы включим PASS: с 12:00 до 22:00 доставка от 20 ₾ бесплатно, меньше — 3 ₾.</p>' + [...paymentLinks.querySelectorAll('a')].map(x => x.outerHTML).join('') + '</div>'
+    passBody.innerHTML = '<div class="success"><div class="big">👑</div><h2>PASS подготовлен</h2><p class="muted">20 ₾ / месяц. Оплатите переводом — после оплаты мы включим PASS: с 12:00 до 22:00 доставка от 20 ₾ бесплатно, меньше — 3 ₾.</p>' + [...paymentLinks.querySelectorAll('a')].map(x => x.outerHTML).join('') + '</div>'
   } catch (e) {
     alert(e.message)
   }
@@ -484,6 +484,7 @@ function bundleItemsText(b) {
 }
 
 function renderBundles() {
+  applyNight();
   if (!bundleCatalog.length) {
     bundles.innerHTML = '<div class="empty">Готовые рывки скоро появятся</div>';
     return
@@ -515,11 +516,65 @@ function totals() {
   return Object.values(cart).reduce((s, x) => s + x.qty * Number(x.p.sale_price), 0)
 }
 
+// ---------- Night prices and day/night delivery — the same rule the server applies to the order (public.night_pricing):
+// 00:00–08:00 Tbilisi every product and Рывок +10 %, rounded up to 0.50 ₾. Day prices are kept in p._day / b._day.
+let NIGHT = null, nightShown = null;
+const tbilisiHM = () => new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Tbilisi', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+const inWin = (t, a, b) => a <= b ? t >= a && t < b : t >= a || t < b;
+const nightOn = () => !!NIGHT && Number(NIGHT.percent) > 0 && inWin(tbilisiHM(), NIGHT.from || '00:00', NIGHT.to || '08:00');
+function nightPrice(x) {
+  const st = Number(NIGHT.step || 0.5);
+  return Math.ceil(Math.round(x * (1 + Number(NIGHT.percent) / 100) / st * 1e6) / 1e6) * st
+}
+function applyNight() {
+  const on = nightOn();
+  nightShown = on;
+  catalog.forEach(p => {
+    if (p._day == null) p._day = Number(p.sale_price);
+    p.sale_price = on && p._day > 0 ? nightPrice(p._day) : p._day
+  });
+  bundleCatalog.forEach(b => {
+    if (b._day == null) b._day = { price: Number(b.price), regular: Number(b.regular_total || 0) };
+    b.price = on ? nightPrice(b._day.price) : b._day.price;
+    b.regular_total = b._day.regular + (b.price - b._day.price)
+  });
+  document.querySelectorAll('.nightNote').forEach(x => x.hidden = !on)
+}
+// Delivery rule for «now»: day 4 ₾ / free from 50 ₾, after 22:00 7 ₾ / free from 80 ₾ (numbers come from the server).
+function deliveryRule() {
+  const d = NIGHT?.delivery || {}, n = inWin(tbilisiHM(), d.night_from || '22:00', d.night_to || '08:00');
+  return { fee: Number(n ? d.night_fee ?? 7 : d.day_fee ?? 4), free: Number(n ? d.night_free_from ?? 80 : d.day_free_from ?? 50) }
+}
+async function loadNight() {
+  try {
+    const r = await PIVKA_DB.client().rpc('night_pricing');
+    if (r.error) throw r.error;
+    NIGHT = r.data
+  } catch (e) {
+    NIGHT = null
+  }
+  renderAllPrices()
+}
+function renderAllPrices() {
+  applyNight();
+  renderProducts();
+  renderBundles();
+  renderCart();
+  if (checkoutFormAlive()) updateCheckoutTotal()
+}
+// The page may stay open across 00:00 / 08:00: switch prices on time.
+setInterval(() => { if (NIGHT && nightOn() !== nightShown) renderAllPrices() }, 30e3);
+// The gift is earned on day prices (the server checks it before the night markup).
+function giftTotals() {
+  return Object.values(cart).reduce((s, x) => s + x.qty * Number(x.p._day ?? x.p.sale_price), 0)
+}
+
 function orderBase() {
   return totals() + Number(checkoutBundle?.price || 0)
 }
 
 function renderCart() {
+  applyNight();
   const items = Object.values(cart),
     total = orderBase(),
     count = items.length;
@@ -532,7 +587,7 @@ function renderCart() {
   cartTotal.textContent = money(total) + ' →';
   document.querySelector('.cart').classList.toggle('show', count > 0 || bundleCount > 0);
   // A Рывок has its own discount and does not count toward the gift — only extra products do.
-  renderGift(totals());
+  renderGift(giftTotals());
   try {
     localStorage.setItem('pivka_cart', JSON.stringify(items.map(x => ({
       id: x.p.id,
@@ -623,7 +678,8 @@ function deliveryHint() {
   if (!checkoutFormAlive()) return '';
   if (deliveryQuoteState.mode === 'HIDDEN') return '';
   if (deliveryQuoteState.mode === 'FREE') return 'Доставка бесплатно';
-  return orderBase() >= 40 ? 'Доставка бесплатно — заказ от 40 ₾' : 'Доставка 5 ₾ · от 40 ₾ — бесплатно';
+  const r = deliveryRule();
+  return orderBase() >= r.free ? 'Доставка бесплатно — заказ от ' + r.free + ' ₾' : 'Доставка ' + r.fee + ' ₾ · от ' + r.free + ' ₾ — бесплатно';
   const fees = [...coZone.options].map(o => Number(o.dataset.fee)).filter(n => !isNaN(n));
   return fees.length ? 'Доставка от ' + money(Math.min(...fees)) + ' · самовывоз бесплатно' : ''
 }
@@ -921,7 +977,7 @@ function applyDeliveryMode() {
   [...coZone.options].forEach(o => {
     if (!o.value) return;
     o.dataset.label = o.dataset.label || o.textContent.split(' · ')[0];
-    o.textContent = mode === 'HIDDEN' ? o.dataset.label : mode === 'FREE' ? o.dataset.label + ' · бесплатно' : o.dataset.label + ' · ' + money(o.dataset.fee)
+    o.textContent = mode === 'HIDDEN' ? o.dataset.label : mode === 'FREE' ? o.dataset.label + ' · бесплатно' : o.dataset.label + ' · ' + money(deliveryRule().fee)
   })
 }
 
@@ -929,7 +985,7 @@ function currentDeliveryFee() {
   if (fulfillment !== 'delivery' || !coZone.value) return 0;
   if (deliveryQuoteState.fee !== null) return deliveryQuoteState.fee;
   const opt = coZone.options[coZone.selectedIndex];
-  return deliveryQuoteState.mode === 'CHARGE' ? Number(opt?.dataset?.fee || 0) : 0
+  return deliveryQuoteState.mode === 'CHARGE' && opt?.value ? deliveryRule().fee : 0
 }
 
 function updateCheckoutTotal() {
@@ -941,7 +997,7 @@ function updateCheckoutTotal() {
   coTotal.textContent = money(base + fee);
   checkoutNotice.style.display = fulfillment === 'delivery' ? 'block' : 'none';
   const min = opt?.dataset?.min && Number(opt.dataset.min) ? ' · Минимальный заказ ' + money(opt.dataset.min) : '';
-  const feeText = deliveryQuoteState.reason === 'FREE_FROM' ? 'Доставка бесплатно — заказ от 40 ₾' : deliveryQuoteState.reason === 'ZONE' && fee > 0 ? 'Доставка: ' + money(fee) + ' · от 40 ₾ — бесплатно' : deliveryQuoteState.reason === 'PASS_SMALL' ? 'Доставка: ' + money(fee) + ' · с PASS от 20 ₾ — бесплатно' : deliveryQuoteState.reason === 'PASS' ? 'Доставка: 0 ₾ — PASS' : mode === 'HIDDEN' ? '' : mode === 'FREE' ? 'Доставка бесплатно' : 'Доставка: ' + money(fee);
+  const feeText = deliveryQuoteState.reason === 'FREE_FROM' ? 'Доставка бесплатно — заказ от ' + deliveryRule().free + ' ₾' : deliveryQuoteState.reason === 'ZONE' && fee > 0 ? 'Доставка: ' + money(fee) + ' · от ' + deliveryRule().free + ' ₾ — бесплатно' : deliveryQuoteState.reason === 'PASS_SMALL' ? 'Доставка: ' + money(fee) + ' · с PASS от 20 ₾ — бесплатно' : deliveryQuoteState.reason === 'PASS' ? 'Доставка: 0 ₾ — PASS' : mode === 'HIDDEN' ? '' : mode === 'FREE' ? 'Доставка бесплатно' : 'Доставка: ' + money(fee);
   checkoutNotice.textContent = fulfillment === 'delivery' ? (coZone.value ? (feeText + min).replace(/^ · /, '') || 'Доставка' : 'Выбери зону доставки') : 'Самовывоз — без платы за доставку'
 }
 
@@ -1077,6 +1133,7 @@ function renderCatHead(cat, rows) {
 }
 
 function renderProducts(filter = currentCat) {
+  applyNight();
   currentCat = filter;
   const known = CATS.some(c => c.slug === filter);
   let rows = catalog.filter(p => known ? inCat(p, filter) : slugOf(p) === filter);
@@ -1170,6 +1227,7 @@ observeNav();
     catalog.forEach(p => {
       if (p.category_id && !catById[p.category_id]) catById[p.category_id] = { id: p.category_id, slug: slugOf(p), name: p.categories?.name || '' }
     });
+    loadNight();
     syncBundle();
     renderBundles();
     renderNav();

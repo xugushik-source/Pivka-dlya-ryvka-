@@ -173,6 +173,12 @@ async function openAdd() {
   if (!catalog) {
     const r = await sb.rpc('city_catalog', { p_city: view.city_id });
     catalog = r.error ? [] : r.data || [];
+    // Night prices (00:00–08:00): an item added now is charged the night price, show the same.
+    const n = await sb.rpc('night_pricing');
+    if (!n.error && n.data?.active) {
+      const st = Number(n.data.step || 0.5), k = 1 + Number(n.data.percent) / 100;
+      catalog.forEach(p => { if (Number(p.sale_price) > 0) p.sale_price = Math.ceil(Math.round(p.sale_price * k / st * 1e6) / 1e6) * st })
+    }
   }
   renderAdd();
   $('search').focus()
