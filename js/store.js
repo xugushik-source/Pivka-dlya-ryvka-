@@ -31,9 +31,15 @@ const CATS = [
   { slug: 'chips', ico: '🍟', label: 'Чипсы', title: 'Чипсы', grp: 'food' },
   { slug: 'snacks', ico: '🥨', label: 'Снеки', title: 'Снеки', grp: 'food' },
   { slug: 'chocolate', ico: '🍫', label: 'Шоколад', title: 'Шоколад', grp: 'food' },
+  { slug: 'salty', ico: '🥒', label: 'Соленья', title: 'Соленья и закуски', grp: 'food' },
+  { slug: 'seafood', ico: '🦐', label: 'Морепродукты', title: 'Морепродукты', grp: 'food' },
   { slug: 'soft-drinks', ico: '🥤', label: 'Напитки', title: 'Напитки', grp: 'more' },
-  { slug: 'energy', ico: '⚡', label: 'Энергетики', title: 'Энергетики', grp: 'more' }
+  { slug: 'energy', ico: '⚡', label: 'Энергетики', title: 'Энергетики', grp: 'more' },
+  { slug: 'frozen', ico: '🥟', label: 'Пельмени', title: 'Пельмени и хинкали', grp: 'more' },
+  { slug: 'supplies', ico: '🧻', label: 'Салфетки', title: 'Салфетки и стаканы', grp: 'more' }
 ];
+// Quick add-ons offered in the cart next to a chosen Рывок (one tap, no category hunting).
+const ADDON_SKUS = ['KRI-SUPPLY-NAPKIN-2525', 'KRI-SUPPLY-CUPS-PAPER-050', 'KRI-PICKLE-CORNICH-370', 'KRI-PICKLE-CORN-370', 'KRI-NUTS-MARTIN-PISTA-080', 'KRI-CHEESE-STICK-100', 'KRI-SNACK-MARTIN-150', 'KRI-SUPPLY-NAPKIN-3030'];
 const SUB_LABEL = {
   vodka: ['водка', 'არაყი', 'օղի'], whisky: ['виски', 'ვისკი', 'վիսկի'], brandy: ['коньяк', 'კონიაკი', 'կոնյակ'],
   strong: ['ликёры', 'ლიქიორები', 'լիկյորներ'], rum: ['ром', 'რომი', 'ռոմ'], gin: ['джин', 'ჯინი', 'ջին'], tequila: ['текила', 'ტეკილა', 'տեկիլա']
@@ -631,10 +637,22 @@ function openCart() {
     const [ico, label] = targetLabel(t);
     return '<button type="button" onclick="openUpsellCategory(\'' + t + '\')">' + ico + ' ' + esc(label) + '</button>'
   }).join('') + '</div>' : '';
+  const addons = checkoutBundle ? ADDON_SKUS.map(s => catalog.find(p => p.sku === s)).filter(p => p && !cart[p.id]).slice(0, 6) : [];
+  if (addons.length) cartRecs.innerHTML = '<div class="bt">Добавь к рывку</div><div class="recs addons">' + addons.map(p =>
+    '<button type="button" onclick="addAddon(\'' + p.id + '\')">＋ ' + esc(pname(p)) + ' · ' + money(p.sale_price) + '</button>').join('') + '</div>' + cartRecs.innerHTML;
   cartDelivery.textContent = (items.length || checkoutBundle) ? deliveryHint() : '';
   sheetTotal.textContent = money(orderBase());
   track('cart_open', { metadata: { total: orderBase(), lines: items.length + (checkoutBundle ? 1 : 0) } });
   openSheet('cartOverlay')
+}
+
+function addAddon(id) {
+  const p = catalog.find(x => x.id === id);
+  if (!p) return;
+  cart[p.id] = { p, qty: 1 };
+  track('add_to_cart', { productId: p.id, metadata: { qty: 1, via: 'bundle_addon', bundleId: checkoutBundle?.id || null } });
+  renderCart();
+  openCart()
 }
 
 function change(id, d) {
