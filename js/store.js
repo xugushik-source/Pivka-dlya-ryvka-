@@ -540,9 +540,9 @@ function applyNight() {
   });
   document.querySelectorAll('.nightNote').forEach(x => x.hidden = !on)
 }
-// Delivery rule for «now»: day 4 ₾ / free from 50 ₾, after 22:00 7 ₾ / free from 80 ₾ (numbers come from the server).
+// Delivery rule for «now»: day 4 ₾ / free from 50 ₾, after 23:00 7 ₾ / free from 80 ₾ (numbers come from the server).
 function deliveryRule() {
-  const d = NIGHT?.delivery || {}, n = inWin(tbilisiHM(), d.night_from || '22:00', d.night_to || '08:00');
+  const d = NIGHT?.delivery || {}, n = inWin(tbilisiHM(), d.night_from || '23:00', d.night_to || '08:00');
   return { fee: Number(n ? d.night_fee ?? 7 : d.day_fee ?? 4), free: Number(n ? d.night_free_from ?? 80 : d.day_free_from ?? 50) }
 }
 async function loadNight() {
