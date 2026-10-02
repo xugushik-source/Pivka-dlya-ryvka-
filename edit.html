@@ -158,7 +158,7 @@ function render() {
 function backLink() {
   if (MODE === 'tg') return '<button class="ghost" onclick="Telegram.WebApp.close()">Закрыть</button>';
   if (MODE === 'staff') return '<a class="ghost" style="display:block;text-align:center;text-decoration:none" href="./admin/">← В админку</a>';
-  return '<a class="ghost" style="display:block;text-align:center;text-decoration:none" href="./">← Вернуться к заказу</a>'
+  return '<a class="ghost" style="display:block;text-align:center;text-decoration:none" href="./order.html?o=' + encodeURIComponent(ORDER) + '">← Вернуться к заказу</a>'
 }
 
 function setQty(k, q) { lines[k].qty = q; render() }
