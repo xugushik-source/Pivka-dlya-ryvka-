@@ -36,7 +36,7 @@ const CATS = [
   { slug: 'soft-drinks', ico: '🥤', label: 'Напитки', title: 'Напитки', grp: 'more' },
   { slug: 'energy', ico: '⚡', label: 'Энергетики', title: 'Энергетики', grp: 'more' },
   { slug: 'frozen', ico: '🥟', label: 'Пельмени', title: 'Пельмени и хинкали', grp: 'more' },
-  { slug: 'supplies', ico: '🧻', label: 'Салфетки', title: 'Салфетки и стаканы', grp: 'more' }
+  { slug: 'supplies', ico: '🧻', label: 'Посуда и салфетки', title: 'Одноразовая посуда и салфетки', grp: 'more' }
 ];
 // Quick add-ons offered in the cart next to a chosen Рывок (one tap, no category hunting).
 const ADDON_SKUS = ['KRI-SUPPLY-NAPKIN-2525', 'KRI-SUPPLY-CUPS-PAPER-050', 'KRI-PICKLE-CORNICH-370', 'KRI-PICKLE-CORN-370', 'KRI-NUTS-MARTIN-PISTA-080', 'KRI-CHEESE-STICK-100', 'KRI-SNACK-MARTIN-150', 'KRI-SUPPLY-NAPKIN-3030'];
@@ -45,8 +45,8 @@ const SUB_LABEL = {
   strong: ['ликёры', 'ლიქიორები', 'լիկյորներ'], rum: ['ром', 'რომი', 'ռոմ'], gin: ['джин', 'ჯინი', 'ջին'], tequila: ['текила', 'ტეკილა', 'տեկիլա']
 };
 // Real photos for section tiles (assets/cat): scene crops from the bar photo, or real packshots on the same bar backdrop.
-const CAT_IMG = ['draft', 'strong', 'wine', 'fish', 'meat-snacks', 'cheese', 'nuts', 'chips', 'snacks', 'soft-drinks', 'energy'];
-const catImg = slug => CAT_IMG.includes(slug) ? './assets/cat/' + slug + '.jpg?v=20260930b' : '';
+const CAT_IMG = ['draft', 'strong', 'wine', 'fish', 'meat-snacks', 'cheese', 'nuts', 'chips', 'snacks', 'soft-drinks', 'energy', 'salty', 'seafood', 'frozen', 'supplies'];
+const catImg = slug => CAT_IMG.includes(slug) ? './assets/cat/' + slug + '.jpg?v=20261002e' : '';
 const LI = () => ({ ru: 0, ka: 1, hy: 2 }[lang()] || 0);
 const tr = s => (window.PIVKA_I18N ? PIVKA_I18N.translate(s, lang()) : s);
 function catConf(slug) {
