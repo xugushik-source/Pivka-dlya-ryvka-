@@ -169,6 +169,11 @@ function phoneOk(v) {
 // database for its status — no phone, no login. Steps: Получен → Принят → Собран → (30 s) Едет → Доставлен / Отменён.
 const TRACK_KEY = 'pivka_last_order';
 const TRACK_KEEP_MS = 3 * 3600e3; // the card stays for 3 hours after the order is delivered or cancelled
+// Someone who ordered in the last 12 hours comes back to see the status: skip the long intro credits.
+try {
+  const o = JSON.parse(localStorage.getItem('pivka_last_order') || 'null');
+  if (o && o.at && Date.now() - o.at < 12 * 3600e3) sessionStorage.setItem('pivka_intro_short', '1')
+} catch (e) {}
 let trackTimer = null;
 
 function trackSaved() {
@@ -179,35 +184,7 @@ function trackSaved() {
   }
 }
 
-function trackTime(v) {
-  return v ? new Date(v).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tbilisi' }) : ''
-}
-
-// Server time now, estimated from the poll answer (the phone clock may be off).
-function trackNow(o) {
-  return new Date(o.now).getTime() + (Date.now() - o._at)
-}
-
-function trackSteps(o) {
-  const pickup = o.fulfillment === 'pickup';
-  const goAt = o.ready_at ? new Date(o.ready_at).getTime() + 30e3 : null; // «Едет» comes 30 s after «Собран»
-  const going = goAt && trackNow(o) >= goAt;
-  const steps = pickup ?
-    [['Получен', o.created_at], ['Принят', o.confirmed_at], ['Готов — можно забирать', o.ready_at], ['Забран', o.delivered_at]] :
-    [['Получен', o.created_at], ['Принят', o.confirmed_at], ['Собран', o.ready_at], ['Едет', going ? goAt : null], ['Доставлен', o.delivered_at]];
-  if (o.status === 'CANCELLED' || o.status === 'REFUNDED') {
-    return steps.filter(s => s[1]).map(s => [s[0], s[1], 'done']).concat([['Отменён', o.cancelled_at, 'cancel']])
-  }
-  const cur = {
-    NEW: 0,
-    CONFIRMED: 1,
-    PREPARING: 1,
-    OUT_FOR_DELIVERY: !pickup && going ? 3 : 2,
-    DELIVERED: steps.length - 1
-  } [o.status] ?? 0;
-  const done = o.status === 'DELIVERED';
-  return steps.map((s, i) => [s[0], i <= cur ? s[1] : null, i < cur || done ? 'done' : i === cur ? 'now' : ''])
-}
+// trackTime / trackNow / trackSteps live in js/track.js (shared with order.html).
 
 let trackTick = null;
 function renderTrack(o) {
@@ -217,7 +194,8 @@ function renderTrack(o) {
   box.innerHTML = '<div class="trackHead"><b>Ваш заказ</b><span>Заказ №' + esc(o.order_number) + '</span></div><ol class="track">' +
     trackSteps(o).map(s => '<li class="' + s[2] + '"><i></i><span>' + esc(s[0]) + '</span><time>' + trackTime(s[1]) + '</time></li>').join('') + '</ol>' +
     // Until the courier confirms, the customer can still change the order.
-    (o.status === 'NEW' ? '<a class="trackEdit" href="./edit.html?o=' + encodeURIComponent(trackSaved()?.id || '') + '">✏️ Изменить заказ</a>' : '');
+    (o.status === 'NEW' ? '<a class="trackEdit" href="./edit.html?o=' + encodeURIComponent(trackSaved()?.id || '') + '">✏️ Изменить заказ</a>' : '') +
+    '<a class="trackMore" href="./order.html?o=' + encodeURIComponent(trackSaved()?.id || '') + '">Что заказано и статус →</a>';
   box.hidden = false;
   if (o.status === 'OUT_FOR_DELIVERY' && o.fulfillment !== 'pickup' && o.ready_at) {
     // Switch «Собран» → «Едет» exactly on time, without waiting for the next poll.
@@ -1041,17 +1019,18 @@ async function submitCheckout() {
     const waText = '🍻 НОВЫЙ ЗАКАЗ №' + r.order_number + '\n' + waItems + '\n\nДоставка: ' + (fulfillment === 'delivery' ? money(r.delivery_fee || 0) + (r.delivery_reason === 'PASS' ? ' (PASS)' : '') : '—') + '\nСумма: ' + money(r.total) + '\nТелефон: ' + phone + '\n' + (fulfillment === 'delivery' ? 'Адрес: ' + address + '\nЗона: ' + coZone.options[coZone.selectedIndex].text : 'Самовывоз') + (fulfillment === 'pickup' ? '\nВремя: через ' + coPickupTime.value + ' мин' : '') + '\nОплата: ' + (coPayment.value === 'cash' ? 'Наличными' : 'Переводом') + (coComment.value.trim() ? '\nКомментарий: ' + coComment.value.trim() : '');
     track('order_complete', { bundleId: checkoutBundle?.id || null, metadata: { order_number: r.order_number, total: Number(r.total), campaign: campaignInfo() } });
     try {
-      if (r.order_id) localStorage.setItem(TRACK_KEY, JSON.stringify({ id: r.order_id, n: r.order_number }))
+      if (r.order_id) localStorage.setItem(TRACK_KEY, JSON.stringify({ id: r.order_id, n: r.order_number, at: Date.now() }))
     } catch (e) {}
-    const waUrl = 'https://wa.me/995579145634?text=' + encodeURIComponent(waText);
-    checkoutBody.innerHTML = `<div class="success"><div class="big">🍻</div><h2>Рывок принят!</h2><p class="muted">Заказ №${r.order_number}<br>Сумма: ${money(r.total)}</p><a class="yellow checkout" style="display:block;text-decoration:none" href="${waUrl}" target="_blank" rel="noopener">Отправить заказ в WhatsApp →</a><button class="skip" onclick="try{sessionStorage.setItem('pivka_intro_short','1')}catch(e){};location.reload()">Готово</button></div>`;
-    // The same status card as on the home page: the customer comes back from WhatsApp and sees where the order is.
+    // The order has its own page; its link goes into the WhatsApp message, so the order can always be found again
+    // (another browser, Instagram/Telegram in-app browser, cleared phone). No automatic jump to WhatsApp any more:
+    // it replaced the store tab and people could not get back to their order.
+    const orderUrl = r.order_id ? new URL('order.html?o=' + r.order_id, location.href.split(/[?#]/)[0].replace(/[^/]*$/, '')).href : '';
+    const waUrl = 'https://wa.me/995579145634?text=' + encodeURIComponent(waText + (orderUrl ? '\n\nСтатус заказа: ' + orderUrl : ''));
+    checkoutBody.innerHTML = `<div class="success"><div class="big">🍻</div><h2>Рывок принят!</h2><p class="muted">Заказ №${r.order_number}<br>Сумма: ${money(r.total)}</p><a class="yellow checkout orderGreen" style="display:block;text-decoration:none" href="${waUrl}" target="_blank" rel="noopener">Отправить заказ в WhatsApp →</a>${orderUrl ? `<a class="yellow checkout" style="display:block;text-decoration:none" href="${orderUrl}">Мой заказ и статус →</a><p class="muted">Ссылка на заказ будет и в вашем сообщении WhatsApp — по ней статус всегда можно открыть снова.</p>` : ''}<button class="skip" onclick="try{sessionStorage.setItem('pivka_intro_short','1')}catch(e){};location.reload()">Готово</button></div>`;
+    // The same status card as on the home page.
     checkoutBody.querySelector('.success').insertAdjacentHTML('beforeend', '<div id="orderTrack" class="trackCard" hidden></div>');
     document.querySelector('#todaySection #orderTrack')?.remove();
     refreshTrack();
-    setTimeout(() => {
-      location.href = waUrl
-    }, 350);
     Object.keys(cart).forEach(k => delete cart[k]);
     checkoutBundle = null;
     try {
