@@ -11,8 +11,10 @@ function trackNow(o) {
 
 function trackSteps(o) {
   const pickup = o.fulfillment === 'pickup';
-  const goAt = o.ready_at ? new Date(o.ready_at).getTime() + 30e3 : null; // «Едет» comes 30 s after «Собран»
-  const going = goAt && trackNow(o) >= goAt;
+  const doneAt = o.delivered_at ? new Date(o.delivered_at).getTime() : null;
+  // «Едет» comes 30 s after «Собран»; delivered sooner (courier was quick) → it still happened, at the latest on delivery.
+  const goAt = o.ready_at ? Math.min(new Date(o.ready_at).getTime() + 30e3, doneAt || Infinity) : null;
+  const going = goAt && (doneAt || (o.cancelled_at ? new Date(o.cancelled_at).getTime() : trackNow(o)) >= goAt);
   const steps = pickup ?
     [['Получен', o.created_at], ['Принят', o.confirmed_at], ['Готов — можно забирать', o.ready_at], ['Забран', o.delivered_at]] :
     [['Получен', o.created_at], ['Принят', o.confirmed_at], ['Собран', o.ready_at], ['Едет', going ? goAt : null], ['Доставлен', o.delivered_at]];
