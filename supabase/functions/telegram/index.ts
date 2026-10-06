@@ -565,29 +565,161 @@ async function onText(cfg: Cfg, m: any) {
   await sendToKind(cfg, "OWNER", `❌ <b>${esc(st.suppliers?.name || "Поставщик")}</b>: итог за ${ddmm(st.settlement_date)} не сходится — «${esc(st.supplier_note)}»`);
 }
 
+// ---------- Chat with customers (site «💬 Написать нам» ↔ Telegram), kept apart from the orders:
+// a separate group with Topics (telegram_links SUPPORT) — one topic per customer, the owner writes in the topic;
+// until it is connected, the owner's bot chat gets «💬 ЧАТ» messages and answers with «Ответить».
+
+const STATUS_RU: Record<string, string> = {
+  NEW: "новый", CONFIRMED: "принят", PREPARING: "собран", OUT_FOR_DELIVERY: "едет", DELIVERED: "доставлен", CANCELLED: "отменён", REFUNDED: "возврат",
+};
+async function supportGroup() {
+  const { data } = await db.from("telegram_links").select("chat_id").eq("kind", "SUPPORT").eq("active", true).not("chat_id", "is", null).limit(1).maybeSingle();
+  return data?.chat_id || null;
+}
+async function loadThread(id: string) {
+  const { data: t } = await db.from("support_threads").select("*").eq("id", id).single();
+  let o: any = null;
+  if (t?.order_id) {
+    const { data } = await db.from("orders").select("id,order_number,status,total,created_at,fulfillment_type,address_snapshot").eq("id", t.order_id).maybeSingle();
+    o = data;
+  }
+  return { t, o };
+}
+const whoLine = (t: any, o: any) => [
+  `👤 <b>${esc(t.name || "Без имени")}</b>${t.phone ? " · " + esc(t.phone) : ""}`,
+  o ? `📦 Заказ №${o.order_number} · ${STATUS_RU[o.status] || o.status} · ${money(o.total)} · ${time(o.created_at)}` : "📦 Заказа ещё нет",
+  o?.address_snapshot ? `🏠 ${esc(o.address_snapshot)}` : null,
+].filter(Boolean).join("\n");
+const topicName = (t: any, o: any) => `${o ? "№" + o.order_number + " · " : ""}${t.name || (t.phone ? t.phone : "Клиент")}`.slice(0, 120);
+
+// The customer's topic in the support group; created with a card on the first message, a new card when the order changes.
+async function ensureTopic(cfg: Cfg, group: number, t: any, o: any) {
+  if (t.tg_chat === group && t.tg_topic) {
+    if (o && t.tg_order_shown !== o.id) {
+      await quiet(tg(cfg, "sendMessage", { chat_id: group, message_thread_id: t.tg_topic, text: "📦 Теперь к чату прикреплён:\n" + whoLine(t, o), parse_mode: "HTML" }));
+      await quiet(tg(cfg, "editForumTopic", { chat_id: group, message_thread_id: t.tg_topic, name: topicName(t, o) }));
+      await db.from("support_threads").update({ tg_order_shown: o.id }).eq("id", t.id);
+    }
+    return t.tg_topic;
+  }
+  const topic = await tg(cfg, "createForumTopic", { chat_id: group, name: topicName(t, o) });
+  await db.from("support_threads").update({ tg_chat: group, tg_topic: topic.message_thread_id, tg_order_shown: o?.id || null }).eq("id", t.id);
+  await quiet(tg(cfg, "sendMessage", { chat_id: group, message_thread_id: topic.message_thread_id, parse_mode: "HTML",
+    text: "💬 <b>Новый чат с сайта</b>\n" + whoLine(t, o) + "\n\nПишите здесь — ответ появится у клиента на сайте." }));
+  return topic.message_thread_id;
+}
+
+async function photoUrl(path: string) {
+  const { data } = await db.storage.from("support-chat").createSignedUrl(path, 3600);
+  return data?.signedUrl || null;
+}
+
+async function onSupportIn(cfg: Cfg, messageId: number) {
+  const { data: m } = await db.from("support_messages").select("*").eq("id", messageId).single();
+  if (!m) return 0;
+  const { t, o } = await loadThread(m.thread_id);
+  const photo = m.image_path ? await photoUrl(m.image_path) : null;
+  const group = await supportGroup();
+  if (group) {
+    try {
+      const topic = await ensureTopic(cfg, group, t, o);
+      if (photo) await tg(cfg, "sendPhoto", { chat_id: group, message_thread_id: topic, photo, caption: m.body ? "👤 " + m.body : "👤 📷" });
+      else await tg(cfg, "sendMessage", { chat_id: group, message_thread_id: topic, text: "👤 " + m.body });
+      return 1;
+    } catch (e) { console.error("support group", e); } // no topics / no rights → owner's chat below
+  }
+  let sent = 0;
+  const head = "💬 <b>ЧАТ С САЙТА</b>\n" + whoLine(t, o) + "\n\n";
+  const foot = "\n\n↩️ <i>Ответьте на это сообщение («Ответить») — ответ уйдёт клиенту на сайт.</i>";
+  for (const l of await linksOf("OWNER")) {
+    try {
+      const r = photo
+        ? await tg(cfg, "sendPhoto", { chat_id: l.chat_id, photo, caption: (head + esc(m.body || "📷") + foot).slice(0, 1000), parse_mode: "HTML" })
+        : await tg(cfg, "sendMessage", { chat_id: l.chat_id, text: head + esc(m.body) + foot, parse_mode: "HTML" });
+      await db.from("support_tg").insert({ chat_id: l.chat_id, message_id: r.message_id, thread_id: t.id });
+      sent++;
+    } catch (e) { console.error(e); }
+  }
+  return sent;
+}
+
+async function onSupportBlocked(cfg: Cfg, threadId: string, until: string) {
+  const { t, o } = await loadThread(threadId);
+  const text = `⛔ Клиент написал грубость — сообщение не доставлено, чат заблокирован до ${time(until)}.`;
+  const group = await supportGroup();
+  if (group) {
+    try { const topic = await ensureTopic(cfg, group, t, o); await tg(cfg, "sendMessage", { chat_id: group, message_thread_id: topic, text }); return 1; }
+    catch (e) { console.error(e); }
+  }
+  return await sendToKind(cfg, "OWNER", "💬 " + whoLine(t, o) + "\n" + text);
+}
+
+async function supportReply(threadId: string, body: string, author: string) {
+  await db.from("support_messages").insert({ thread_id: threadId, dir: "OUT", body: body.slice(0, 2000), author });
+  await db.from("support_threads").update({ last_out_at: new Date().toISOString() }).eq("id", threadId);
+}
+
+// Owner / staff wrote something: in a customer's topic of the support group, or as a reply in the owner's bot chat.
+// Returns true when it was a chat answer (then it must not go on to the supplier «не сходится» note).
+async function onSupportOwnerMessage(cfg: Cfg, m: any) {
+  if (m.from?.is_bot) return true;
+  const group = m.chat.type === "group" || m.chat.type === "supergroup";
+  let threadId: string | null = null;
+  if (group) {
+    const g = await supportGroup();
+    if (!g || m.chat.id !== g) return true;            // some other group: ignore
+    if (!m.message_thread_id || !m.is_topic_message) return true; // the general topic: not a customer
+    const { data } = await db.from("support_threads").select("id").eq("tg_chat", m.chat.id).eq("tg_topic", m.message_thread_id).maybeSingle();
+    threadId = data?.id || null;
+    if (!threadId) return true;
+  } else if (m.reply_to_message) {
+    const { data: own } = await db.from("telegram_links").select("id").eq("kind", "OWNER").eq("active", true).eq("chat_id", m.chat.id).maybeSingle();
+    if (!own) return false;
+    const { data } = await db.from("support_tg").select("thread_id").eq("chat_id", m.chat.id).eq("message_id", m.reply_to_message.message_id).maybeSingle();
+    threadId = data?.thread_id || null;
+    if (!threadId) return false;
+  } else return false;
+  if (!m.text) {
+    await quiet(tg(cfg, "sendMessage", { chat_id: m.chat.id, message_thread_id: m.message_thread_id, text: "Клиенту уходит только текст — напишите словами." }));
+    return true;
+  }
+  await supportReply(threadId, String(m.text), m.from?.first_name || "Пивка для рывка");
+  if (!group) await quiet(tg(cfg, "sendMessage", { chat_id: m.chat.id, text: "✅ Отправлено клиенту", reply_to_message_id: m.message_id }));
+  return true;
+}
+
 // ---------- Telegram updates
 
 const WELCOME: Record<string, (label: string) => string> = {
   OWNER: () => "✅ Готово! Сюда будут приходить все новые заказы целиком.",
   SUPPLIER: (n) => `✅ Готово${n ? ", " + esc(n) : ""}! Сюда будут приходить заказы для подготовки — только ваши товары.`,
   DRIVER: (n) => `✅ Готово${n ? ", " + esc(n) : ""}! Сюда будут приходить новые заказы вашего города. Нажмите «🙋 Беру», позвоните клиенту — и дальше по кнопкам.`,
+  SUPPORT: () => "✅ Группа подключена: сюда будут приходить чаты клиентов с сайта — у каждого клиента своя тема. Пишите в теме клиента — ответ сразу появится у него на сайте.",
 };
 
 async function onStart(cfg: Cfg, m: any) {
-  const start = String(m.text || "").match(/^\/start(?:\s+([a-f0-9]{8,64}))?/i);
+  const start = String(m.text || "").match(/^\/start(?:@\w+)?(?:\s+([a-f0-9]{8,64}))?/i);
   if (!start) return;
   const code = start[1];
   const { data: link } = code
     ? await db.from("telegram_links").select("id,kind,label").eq("code", code).eq("active", true).maybeSingle()
     : { data: null };
   if (!link) {
-    await tg(cfg, "sendMessage", { chat_id: m.chat.id, text: "Чтобы подключиться, попросите ссылку у владельца «Пивка для рывка»." });
+    if (m.chat.type === "private") await tg(cfg, "sendMessage", { chat_id: m.chat.id, text: "Чтобы подключиться, попросите ссылку у владельца «Пивка для рывка»." });
+    return;
+  }
+  const group = m.chat.type === "group" || m.chat.type === "supergroup";
+  if ((link.kind === "SUPPORT") !== group) {
+    await tg(cfg, "sendMessage", { chat_id: m.chat.id, text: link.kind === "SUPPORT" ? "Эта ссылка — для группы чатов с клиентами." : "Эта ссылка — для личного чата с ботом." });
     return;
   }
   await db.from("telegram_links").update({
     chat_id: m.chat.id, tg_username: m.from?.username || null, linked_at: new Date().toISOString(),
   }).eq("id", link.id);
   await tg(cfg, "sendMessage", { chat_id: m.chat.id, text: WELCOME[link.kind](link.label || ""), parse_mode: "HTML" });
+  if (link.kind === "SUPPORT" && !m.chat.is_forum) {
+    await quiet(tg(cfg, "sendMessage", { chat_id: m.chat.id, text: "⚠️ Включите в настройках группы «Темы» (Topics) и сделайте бота администратором с правом «Управление темами» — тогда у каждого клиента будет своя тема." }));
+  }
 }
 
 const ERR: Record<string, string> = {
@@ -666,7 +798,11 @@ async function onCallback(cfg: Cfg, q: any) {
 
 async function onUpdate(cfg: Cfg, u: any) {
   if (u.callback_query) return onCallback(cfg, u.callback_query);
-  if (u.message?.text && u.message.chat?.id) return /^\/start/.test(u.message.text) ? onStart(cfg, u.message) : onText(cfg, u.message);
+  const m = u.message;
+  if (!m?.chat?.id) return;
+  if (m.text && /^\/start/.test(m.text)) return onStart(cfg, m);
+  if (await onSupportOwnerMessage(cfg, m)) return;   // chat with a customer
+  if (m.text && m.chat.type === "private") return onText(cfg, m);
 }
 
 // ---------- Order edit page inside Telegram (Mini App)
@@ -731,6 +867,8 @@ Deno.serve(async (req) => {
       if (b.action === "order_edited") return out({ sent: await onOrderEdited(cfg, b) });
       if (b.action === "supplier_day") return out({ sent: await onSupplierDay(cfg, b.ids || []) });
       if (b.action === "supplier_paid") return out({ sent: await onSupplierPaid(cfg, b.supplier_id, Number(b.amount)) });
+      if (b.action === "support_in") return out({ sent: await onSupportIn(cfg, Number(b.message_id)) });
+      if (b.action === "support_blocked") return out({ sent: await onSupportBlocked(cfg, b.thread_id, b.until) });
       return out({ error: "Unknown action" }, 400);
     }
 

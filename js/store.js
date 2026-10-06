@@ -940,7 +940,7 @@ async function changeCity(id) {
     }
     const [links, zones] = await Promise.all([retry(() => PIVKA_DB.listPaymentLinks(id)), retry(() => PIVKA_DB.listDeliveryZones(id))]);
     // Bank transfer links (BOG / TBC) are shown only when the customer picks «Переводом».
-    paymentLinks.innerHTML = links.length ? '<div class="muted payhint">Переведите сумму «К оплате» по ссылке банка и отправьте скриншот в WhatsApp вместе с заказом.</div>' + links.map(x => '<a class="yellow paylink" target="_blank" rel="noopener" href="' + esc(x.url) + '">💳 ' + esc(x.name) + '</a>').join('') : '<div class="muted">Перевод — по реквизитам, которые пришлём в WhatsApp.</div>';
+    paymentLinks.innerHTML = links.length ? '<div class="muted payhint">Переведите сумму «К оплате» по ссылке банка и отправьте скриншот в чат (кнопка 💬).</div>' + links.map(x => '<a class="yellow paylink" target="_blank" rel="noopener" href="' + esc(x.url) + '">💳 ' + esc(x.name) + '</a>').join('') : '<div class="muted">Перевод — по реквизитам, которые пришлём в WhatsApp.</div>';
     syncPaymentLinks();
     coZone.innerHTML = '<option value="">Выберите зону доставки</option>' + zones.map(z => '<option value="' + z.id + '" data-fee="' + Number(z.fee || 0) + '" data-min="' + Number(z.minimum_order || 0) + '">' + z.name + ' · ' + money(z.fee) + '</option>').join('');
     if (zones.length === 1) {
@@ -1106,18 +1106,13 @@ async function submitCheckout() {
     let r;
     if (checkoutBundle) r = await PIVKA_DB.createBundleOrder(payload);
     else r = await PIVKA_DB.createOrder(payload);
-    const waItems = (checkoutBundle ? checkoutBundle.name + ' (' + (checkoutBundle.items || []).map(i => i.name + ' × ' + Number(i.quantity)).join(', ') + ')' + (items.length ? '\n' : '') : '') + Object.values(cart).map(x => x.p.name + ' × ' + x.qty).join('\n');
-    const waText = '🍻 НОВЫЙ ЗАКАЗ №' + r.order_number + '\n' + waItems + '\n\nДоставка: ' + (fulfillment === 'delivery' ? money(r.delivery_fee || 0) + (r.delivery_reason === 'PASS' ? ' (PASS)' : '') : '—') + '\nСумма: ' + money(r.total) + '\nТелефон: ' + phone + '\n' + (fulfillment === 'delivery' ? 'Адрес: ' + address + '\nЗона: ' + coZone.options[coZone.selectedIndex].text : 'Самовывоз') + (fulfillment === 'pickup' ? '\nВремя: через ' + coPickupTime.value + ' мин' : '') + '\nОплата: ' + (coPayment.value === 'cash' ? 'Наличными' : 'Переводом') + (coComment.value.trim() ? '\nКомментарий: ' + coComment.value.trim() : '');
     track('order_complete', { bundleId: checkoutBundle?.id || null, metadata: { order_number: r.order_number, total: Number(r.total), campaign: campaignInfo() } });
     try {
       if (r.order_id) localStorage.setItem(TRACK_KEY, JSON.stringify({ id: r.order_id, n: r.order_number, at: Date.now() }))
     } catch (e) {}
-    // The order has its own page; its link goes into the WhatsApp message, so the order can always be found again
-    // (another browser, Instagram/Telegram in-app browser, cleared phone). No automatic jump to WhatsApp any more:
-    // it replaced the store tab and people could not get back to their order.
+    // The order has its own page (status, «Рывок» game, chat with us) — no WhatsApp, no phone number.
     const orderUrl = r.order_id ? new URL('order.html?o=' + r.order_id, location.href.split(/[?#]/)[0].replace(/[^/]*$/, '')).href : '';
-    const waUrl = 'https://wa.me/995579145634?text=' + encodeURIComponent(waText + (orderUrl ? '\n\nСтатус заказа: ' + orderUrl : ''));
-    checkoutBody.innerHTML = `<div class="success"><div class="big">🍻</div><h2>Рывок принят!</h2><p class="muted">Заказ №${r.order_number}<br>Сумма: ${money(r.total)}</p><a class="yellow checkout orderGreen" style="display:block;text-decoration:none" href="${waUrl}" target="_blank" rel="noopener">Отправить заказ в WhatsApp →</a>${orderUrl ? `<a class="yellow checkout" style="display:block;text-decoration:none" href="${orderUrl}">Мой заказ и статус →</a><p class="muted">Ссылка на заказ будет и в вашем сообщении WhatsApp — по ней статус всегда можно открыть снова.</p>` : ''}<button class="skip" onclick="try{sessionStorage.setItem('pivka_intro_short','1')}catch(e){};location.reload()">Готово</button></div>`;
+    checkoutBody.innerHTML = `<div class="success"><div class="big">🍻</div><h2>Рывок принят!</h2><p class="muted">Заказ №${r.order_number}<br>Сумма: ${money(r.total)}</p>${orderUrl ? `<a class="yellow checkout" style="display:block;text-decoration:none" href="${orderUrl}">Мой заказ и статус →</a><button type="button" class="skip" data-chat>💬 Вопрос по заказу? Напишите нам в чат</button>` : ''}<button class="skip" onclick="try{sessionStorage.setItem('pivka_intro_short','1')}catch(e){};location.reload()">Готово</button></div>`;
     // The same status card as on the home page.
     checkoutBody.querySelector('.success').insertAdjacentHTML('beforeend', '<div id="orderTrack" class="trackCard" hidden></div>');
     document.querySelector('#todaySection #orderTrack')?.remove();
