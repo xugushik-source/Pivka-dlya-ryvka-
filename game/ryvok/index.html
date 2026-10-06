@@ -79,11 +79,12 @@ h1,.caps{text-transform:uppercase}h1{margin:4px 0 0;font-size:34px;font-weight:1
   <div class="card"><b>⚡ Ускорение</b><br>Каждую секунду игра становится быстрее.</div>
   <div class="card"><b>🏆 Правила</b><br>Засчитывается твой лучший результат за месяц. Приз выдаётся после проверки результата.</div>
 </div>
+<a class="note" id="toOrder" hidden style="color:#ffcf6b;font-weight:800;text-decoration:none">Мой заказ и статус →</a>
 <p class="note" id="proto" hidden>Тренировка: результат не идёт в чемпионат.</p>
 </main>
 <script src="../../config.js"></script>
-<script src="../../js/game/ryvok-sim.js?v=20261007b"></script>
-<script src="../../js/game/ryvok-game.js?v=20261007b"></script>
+<script src="../../js/game/ryvok-sim.js?v=20261007c"></script>
+<script src="../../js/game/ryvok-game.js?v=20261007c"></script>
 <script>
 'use strict';
 // Same language system as the shop: js/i18n.js translates the page; setLang must exist before it loads.
@@ -94,7 +95,7 @@ window.setLang = function (l) {
   if (window.__ryvokLang) window.__ryvokLang();
 };
 </script>
-<script src="../../js/i18n.js?v=20261007b"></script>
+<script src="../../js/i18n.js?v=20261007c"></script>
 <script>
 (() => {
   // The game is a separate page: whatever happens here, the shop, the cart and the order are untouched.
@@ -113,6 +114,7 @@ window.setLang = function (l) {
   const lang = () => document.documentElement.lang || 'ru';
   const show = (id, on) => { $(id).hidden = !on };
   const setN = (id, n) => { $(id).querySelector('.n').textContent = n };
+  const MSG = { not_yet: 'Игра откроется, когда курьер выедет к тебе.', cancelled: 'Заказ отменён — по нему играть нельзя.', old_order: 'Этот заказ слишком старый для чемпионата.', season: 'Сейчас нет активного чемпионата.', rate: 'Слишком много попыток подряд. Попробуй позже.', version: 'Игра обновилась — обнови страницу.', net: 'Нет связи с сервером. Попробуй ещё раз.' };
 
   async function api(body) {
     const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 12000);
@@ -160,6 +162,10 @@ window.setLang = function (l) {
       if (ORDER && st.mine && st.mine.error === 'order') { noOrder(); return }
       renderSeason(); renderBoard(); renderMine();
       if (st.mine && st.mine.left <= 0) { $('startErr').textContent = $('noMoreMsg').textContent; show('startErr', true) }
+      else if (st.mine && !['OUT_FOR_DELIVERY', 'DELIVERED'].includes(st.mine.orderStatus)) {   // before the courier pressed «Еду»
+        $('startErr').textContent = MSG.not_yet; show('startErr', true); $('go').disabled = true;
+        setTimeout(load, 30e3);
+      } else $('go').disabled = st.mine ? st.mine.left <= 0 : $('go').disabled;
     } catch (e) { /* the board is optional — the game still opens */ }
   }
 
@@ -214,7 +220,7 @@ window.setLang = function (l) {
     try { j = await api({ action: 'start', order: ORDER, version: RyvokSim.VERSION, nickname: $('nick').value.trim() || null }) } catch (err) { j = { error: 'net' } }
     btn.disabled = false;
     if (!j.run) {
-      const msg = { no_attempts: $('noMoreMsg').textContent, cancelled: 'Заказ отменён — по нему играть нельзя.', old_order: 'Этот заказ слишком старый для чемпионата.', season: 'Сейчас нет активного чемпионата.', rate: 'Слишком много попыток подряд. Попробуй позже.', version: 'Игра обновилась — обнови страницу.' }[j.error] || 'Нет связи с сервером. Попробуй ещё раз.';
+      const msg = j.error === 'no_attempts' ? $('noMoreMsg').textContent : MSG[j.error] || MSG.net;
       if (game.phase === 'over') { $('noMoreMsg').textContent = msg; show('noMore', true); show('again', j.error !== 'no_attempts') }
       else { $('startErr').textContent = msg; show('startErr', true) }
       if (j.error === 'no_attempts') $('go').disabled = true;
@@ -237,6 +243,7 @@ window.setLang = function (l) {
     }
   });
   try { const p = JSON.parse(localStorage.getItem('pivka_profile') || '{}'); if (p.name) $('nick').value = String(p.name).trim().split(/\s+/)[0].slice(0, 16) } catch (e) {}
+  if (ORDER) { $('toOrder').href = '../../order.html?o=' + encodeURIComponent(ORDER); show('toOrder', true) }
   if (DEMO) { show('proto', true) }
   else if (!ORDER) noOrder();
   if (!DEMO) load();

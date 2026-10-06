@@ -3,6 +3,7 @@
 -- Rules
 --   • 1 order = 3 attempts (game_seasons.attempts_per_order). An attempt is used the moment a run starts,
 --     so restarting / closing the tab does not give a fresh try.
+--   • Runs start only once the courier pressed «Еду» (OUT_FOR_DELIVERY) or the order is delivered.
 --   • A player = a customer (the phone behind the order). Their best score in the season counts.
 --   • Only orders that are (or become) CONFIRMED…DELIVERED count on the public board; a cancelled order's runs
 --     drop out by themselves. Customers can play while the order is still NEW — that is the waiting time.
@@ -170,6 +171,8 @@ begin
   select id, customer_id, status, created_at into o from public.orders where id = p_order for update;
   if o.id is null then return jsonb_build_object('error', 'order'); end if;
   if o.status in ('CANCELLED', 'REFUNDED') then return jsonb_build_object('error', 'cancelled'); end if;
+  -- the game opens when the courier has left («Еду») — not before
+  if o.status not in ('OUT_FOR_DELIVERY', 'DELIVERED') then return jsonb_build_object('error', 'not_yet'); end if;
   if o.created_at < now() - interval '14 days' then return jsonb_build_object('error', 'old_order'); end if;
   s := private.game_active_season(p_game);
   if s.id is null then return jsonb_build_object('error', 'season'); end if;
