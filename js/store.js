@@ -24,6 +24,7 @@ const CATS = [
   { slug: 'draft', ico: '🍺', label: 'Пиво', title: 'Пиво', grp: 'alc' },
   { slug: 'strong', ico: '🥃', label: 'Крепкое', title: 'Крепкие напитки', grp: 'alc', group: STRONG_GROUP },
   { slug: 'wine', ico: '🍷', label: 'Вино', title: 'Вино', grp: 'alc' },
+  { slug: 'pizza', ico: '🍕', label: 'Пицца', title: 'Пицца, хачапури, ламаджо', grp: 'food' },
   { slug: 'fish', ico: '🐟', label: 'Рыба', title: 'Рыба', grp: 'food' },
   { slug: 'meat-snacks', ico: '🥩', label: 'Мясное', title: 'Мясные закуски', grp: 'food' },
   { slug: 'cheese', ico: '🧀', label: 'Сыр', title: 'Сыр', grp: 'food' },
@@ -45,7 +46,7 @@ const SUB_LABEL = {
   strong: ['ликёры', 'ლიქიორები', 'լիկյորներ'], rum: ['ром', 'რომი', 'ռոմ'], gin: ['джин', 'ჯინი', 'ջին'], tequila: ['текила', 'ტეკილა', 'տեկիլա']
 };
 // Real photos for section tiles (assets/cat): scene crops from the bar photo, or real packshots on the same bar backdrop.
-const CAT_IMG = ['draft', 'strong', 'wine', 'fish', 'meat-snacks', 'cheese', 'nuts', 'chips', 'snacks', 'soft-drinks', 'energy', 'salty', 'seafood', 'frozen', 'supplies'];
+const CAT_IMG = ['draft', 'strong', 'wine', 'pizza', 'fish', 'meat-snacks', 'cheese', 'nuts', 'chips', 'snacks', 'soft-drinks', 'energy', 'salty', 'seafood', 'frozen', 'supplies'];
 const catImg = slug => CAT_IMG.includes(slug) ? './assets/cat/' + slug + '.jpg?v=20261002e' : '';
 const LI = () => ({ ru: 0, ka: 1, hy: 2 }[lang()] || 0);
 const tr = s => (window.PIVKA_I18N ? PIVKA_I18N.translate(s, lang()) : s);
