@@ -39,6 +39,62 @@ const CATS = [
   { slug: 'frozen', ico: '🥟', label: 'Пельмени', title: 'Пельмени и хинкали', grp: 'more' },
   { slug: 'supplies', ico: '🧻', label: 'Посуда и салфетки', title: 'Одноразовая посуда и салфетки', grp: 'more' }
 ];
+// Hot food is baked for the order (products.prep_minutes / prep_batch): the courier picks everything up together.
+const FOOD_NOTE = '🍕 Еду пекут под заказ (~{n} мин) — привезём всё вместе: горячую еду и холодное пиво';
+// Selling hours (products.sell_from / sell_until, Asia/Tbilisi). The server refuses closed products anyway.
+const HOURS = {}, PREP = {};
+let catalogAll = [], hoursKey = '';
+const hm2min = t => { const [h, m] = String(t).split(':'); return +h * 60 + +m };
+function tbilisiMin() {
+  try { return hm2min(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tbilisi', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date())) } catch (e) { const d = new Date(); return d.getHours() * 60 + d.getMinutes() }
+}
+function openNow(p) {
+  const h = HOURS[p.id];
+  if (!h || !h[0] || !h[1]) return true;
+  const m = tbilisiMin(), f = hm2min(h[0]), u = hm2min(h[1]);
+  return f <= u ? m >= f && m < u : m >= f || m < u
+}
+function setCatalog(list) {
+  catalogAll = list;
+  catalog = list.filter(openNow);
+  hoursKey = catalog.map(p => p.id).join();
+  if (!catProducts(currentCat).length) currentCat = (CATS.find(c => catProducts(c.slug).length) || CATS[0]).slug;
+  renderHoursNote()
+}
+function renderHoursNote() {
+  const el = document.getElementById('hoursNote');
+  if (!el) return;
+  const closed = slug => catalogAll.some(p => slugOf(p) === slug && !openNow(p));
+  const beer = closed('draft'), food = closed('pizza');
+  const text = beer && food ? '🌙 Ночью (23:00–11:00) — крепкое и закуска к нему. Пиво — с 11:00, пицца и хачапури — с 10:00.'
+    : beer ? '☀️ Пиво — с 11:00. Пицца, хачапури и ламаджо уже пекут.' : '';
+  el.hidden = !text;
+  el.textContent = text ? tr(text) : ''
+}
+// Minutes the kitchen needs for these lines: one batch per kind (lahmajo: per 5 pieces), kinds one after another.
+function foodMinutes(lines) {
+  const g = new Map();
+  lines.forEach(([id, q]) => {
+    const [prep, batch] = PREP[id] || [];
+    if (!prep) return;
+    const k = prep + '|' + (batch || 0), x = g.get(k) || { prep: +prep, batch: +batch || 0, q: 0 };
+    x.q += Number(q) || 0;
+    g.set(k, x)
+  });
+  let t = 0;
+  g.forEach(x => t += x.batch ? Math.ceil(x.q / x.batch) * x.prep : x.prep);
+  return t
+}
+setInterval(async () => {
+  if (!catalogAll.length || catalogAll.filter(openNow).map(p => p.id).join() === hoursKey) return;
+  setCatalog(catalogAll);
+  try { bundleCatalog = await PIVKA_DB.listBundles(localStorage.getItem('pivka_city')) } catch (e) {}
+  syncBundle();
+  renderNav();
+  renderProducts();
+  renderBundles();
+  restoreCart()
+}, 60e3);
 // Quick add-ons offered in the cart next to a chosen Рывок (one tap, no category hunting).
 const ADDON_SKUS = ['KRI-SUPPLY-NAPKIN-2525', 'KRI-SUPPLY-CUPS-PAPER-050', 'KRI-PICKLE-CORNICH-370', 'KRI-PICKLE-CORN-370', 'KRI-NUTS-MARTIN-PISTA-080', 'KRI-CHEESE-STICK-100', 'KRI-SNACK-MARTIN-150', 'KRI-SUPPLY-NAPKIN-3030'];
 const SUB_LABEL = {
@@ -518,7 +574,7 @@ function renderBundles() {
         const sl = itemSlug(i), ico = STRONG_GROUP.includes(sl) ? '🥃' : ITEM_ICO[sl] || '•', q = Number(i.quantity);
         return '<li>' + ico + ' ' + esc(pname(i)) + (i.unit === 'liter' ? ' — ' + q + unitL() : q > 1 ? ' × ' + q : '') + '</li>'
       }).join('');
-    return `<article class="card bundle${ok?'':' off'}${on?' chosen':''}" style="--i:${n}"><div class="bthumbs">${thumbs}</div><div class="pad"><div><span class="tag">${esc(b.badge_text||'РЫВОК')}</span>${b.serves_label?'<span class="serves">'+esc(b.serves_label)+'</span>':''}</div><h3>${esc(b.name)}</h3>${b.description?'<div class="bidea">'+esc(b.description)+'</div>':''}<div class="bprices">${save>0?'<div><span class="lbl">По отдельности</span><s>'+money(b.regular_total)+'</s></div>':''}<div><span class="lbl">Рывком</span><b class="now">${money(b.price)}</b></div>${save>0?'<div><span class="lbl">Экономия</span><b class="save">'+money(save)+'</b></div>':''}</div><ul class="bcomp"><span class="lbl">В составе</span>${comp}</ul>${ok?`<button type="button" class="cta" onclick="chooseBundle('${b.id}')">${on?'Рывок выбран ✓':'ВЗЯТЬ РЫВОК'}</button>`:'<button type="button" class="cta" disabled>Временно недоступен</button>'}</div></article>`
+    return `<article class="card bundle${ok?'':' off'}${on?' chosen':''}" style="--i:${n}"><div class="bthumbs">${thumbs}</div><div class="pad"><div><span class="tag">${esc(b.badge_text||'РЫВОК')}</span>${b.serves_label?'<span class="serves">'+esc(b.serves_label)+'</span>':''}</div><h3>${esc(b.name)}</h3>${b.description?'<div class="bidea">'+esc(b.description)+'</div>':''}<div class="bprices">${save>0?'<div><span class="lbl">По отдельности</span><s>'+money(b.regular_total)+'</s></div>':''}<div><span class="lbl">Рывком</span><b class="now">${money(b.price)}</b></div>${save>0?'<div><span class="lbl">Экономия</span><b class="save">'+money(save)+'</b></div>':''}</div><ul class="bcomp"><span class="lbl">В составе</span>${comp}</ul>${ok?`<button type="button" class="cta" onclick="chooseBundle('${b.id}')">${on?'Рывок выбран ✓':'ВЗЯТЬ РЫВОК'}</button>`:'<button type="button" class="cta" disabled>'+(b.unavailable_reason==='CLOSED_NOW'?tr('Днём, с 11:00'):'Временно недоступен')+'</button>'}</div></article>`
   }).join('')
 }
 
@@ -715,7 +771,8 @@ function openCart() {
   const addons = checkoutBundle ? ADDON_SKUS.map(s => catalog.find(p => p.sku === s)).filter(p => p && !cart[p.id]).slice(0, 6) : [];
   if (addons.length) cartRecs.innerHTML = '<div class="bt">Добавь к рывку</div><div class="recs addons">' + addons.map(p =>
     '<button type="button" onclick="addAddon(\'' + p.id + '\')">＋ ' + esc(pname(p)) + ' · ' + money(p.sale_price) + '</button>').join('') + '</div>' + cartRecs.innerHTML;
-  cartDelivery.textContent = (items.length || checkoutBundle) ? deliveryHint() : '';
+  const foodMin = foodMinutes(items.map(x => [x.p.id, x.qty]).concat((checkoutBundle?.items || []).map(i => [i.product_id, i.quantity])));
+  cartDelivery.textContent = (items.length || checkoutBundle) ? [deliveryHint(), foodMin ? tr(FOOD_NOTE).replace('{n}', foodMin) : ''].filter(Boolean).join(' · ') : '';
   sheetTotal.textContent = money(orderBase());
   track('cart_open', { metadata: { total: orderBase(), lines: items.length + (checkoutBundle ? 1 : 0) } });
   openSheet('cartOverlay')
@@ -912,7 +969,7 @@ async function changeCity(id) {
   try {
     const cc = await PIVKA_DB.listCityCatalog(id);
     if (cc.length) {
-      catalog = cc.map(p => ({
+      setCatalog(cc.map(p => ({
         ...p,
         name_i18n: nameI18n[p.id] || {},
         categories: {
@@ -922,7 +979,7 @@ async function changeCity(id) {
         active: true,
         stock_quantity: Number(p.available_stock || 0),
         available_stock: Number(p.available_stock || 0)
-      }));
+      })));
       renderNav();
       renderProducts();
       restoreCart()
@@ -1228,8 +1285,11 @@ observeNav();
     giftTiers = groupGiftTiers(giftTiers);
     categoryRows.forEach(c => catById[c.id] = c);
     catalog.forEach(p => {
-      if (p.name_i18n) nameI18n[p.id] = p.name_i18n
+      if (p.name_i18n) nameI18n[p.id] = p.name_i18n;
+      HOURS[p.id] = [p.sell_from, p.sell_until];
+      PREP[p.id] = [p.prep_minutes, p.prep_batch]
     });
+    setCatalog(catalog);
     citySelect.innerHTML = cities.map(c => '<option value="' + c.id + '">' + c.name + '</option>').join('');
     const savedCity = localStorage.getItem('pivka_city');
     currentCity = cities.find(c => c.id === savedCity) || cities[0] || null;

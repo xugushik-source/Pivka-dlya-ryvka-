@@ -59,7 +59,7 @@ async function loadOrder(orderId: string) {
     .select("id,order_number,status,fulfillment_type,address_snapshot,payment_method,discount_total,delivery_fee,total,comment," +
       "created_at,confirmed_at,ready_at,delivered_at,cancellation_reason,city_id," +
       "customers(full_name,phone),service_cities(name),delivery_zones(name)," +
-      "order_items(name_snapshot,quantity,unit_snapshot,unit_price_snapshot,line_total,is_gift,supplier_id,supplier_cost_snapshot)," +
+      "order_items(name_snapshot,quantity,unit_snapshot,unit_price_snapshot,line_total,is_gift,supplier_id,supplier_cost_snapshot,products(prep_minutes,prep_batch))," +
       "delivery_assignments(driver_id,drivers(name)),order_collections(method,created_at)," +
       "supplier_order_groups(supplier_id,status,ready_at,missing_note,suppliers(name))")
     .eq("id", orderId).single();
@@ -128,13 +128,13 @@ const ownerReasonsKeyboard = (id: string) => ({
     [{ text: "← Назад, не отменять", callback_data: ocb("bk", id) }],
   ],
 });
-const ownerText = (o: any) => `🍺 <b>Заказ №${o.order_number}</b> · ${time(o.created_at)}\n${orderBody(o)}\n\n<b>Статус:</b> ${statusLine(o)}${suppliersLine(o)}`;
+const ownerText = (o: any) => `🍺 <b>Заказ №${o.order_number}</b> · ${time(o.created_at)}\n${orderBody(o)}\n\n<b>Статус:</b> ${statusLine(o)}${suppliersLine(o)}${foodLine(o)}`;
 
 const offerText = (o: any) => {
   const n = (o.order_items || []).filter((i: any) => !i.is_gift).length;
   return `🆕 <b>Новый заказ №${o.order_number}</b> · ${hm(o.created_at)}\n📍 ${esc(o.service_cities?.name || "")}` +
     `${o.delivery_zones?.name ? " · " + esc(o.delivery_zones.name) : ""}\n🏠 ${esc(o.address_snapshot || "—")}\n` +
-    `${n} поз. · <b>${money(o.total)}</b>\n\nКто возьмёт — звонит клиенту и подтверждает заказ.`;
+    `${n} поз. · <b>${money(o.total)}</b>${hasHotFood(o) ? "\n🍕 С горячей едой (~" + prepMinutes(o) + " мин)" : ""}\n\nКто возьмёт — звонит клиенту и подтверждает заказ.`;
 };
 
 const HINT: Record<string, string> = {
@@ -144,7 +144,7 @@ const HINT: Record<string, string> = {
   OUT_FOR_DELIVERY: "Отдали заказ? Выберите, как клиент заплатил:",
 };
 const cardText = (o: any) =>
-  `🛵 <b>Заказ №${o.order_number}</b> · ${time(o.created_at)}\n${orderBody(o)}\n\n<b>Статус:</b> ${statusLine(o)}${suppliersLine(o)}` +
+  `🛵 <b>Заказ №${o.order_number}</b> · ${time(o.created_at)}\n${orderBody(o)}\n\n<b>Статус:</b> ${statusLine(o)}${suppliersLine(o)}${foodLine(o)}` +
   (HINT[o.status] ? `\n\n${HINT[o.status]}` : "");
 
 const cb = (act: string, id: string, arg = "") => `c|${act}|${id}${arg ? "|" + arg : ""}`;
@@ -246,18 +246,47 @@ async function onRemind(cfg: Cfg, orderId: string) {
 
 // ---------- Suppliers: only their own lines, at purchase price, no customer data.
 
-const prepMinutes = (o: any) => o.fulfillment_type === "delivery" ? 5 : 10;
+// One order = one trip: everything is picked up together when the hot food is ready.
+// products.prep_minutes / prep_batch: pizza and khachapuri 15 min; lahmajo 10 min per 5 pieces (6–10 → 20 min).
+// One oven: different kinds are baked one after another, so their times add up.
+const basePrep = (o: any) => o.fulfillment_type === "delivery" ? 5 : 10;
+function foodMinutes(items: any[]) {
+  const g = new Map<string, { prep: number; batch: number; q: number }>();
+  for (const i of items) {
+    const prep = Number(i.products?.prep_minutes) || 0;
+    if (!prep) continue;
+    const batch = Number(i.products?.prep_batch) || 0, k = prep + "|" + batch;
+    const x = g.get(k) || { prep, batch, q: 0 };
+    x.q += Number(i.quantity) || 0;
+    g.set(k, x);
+  }
+  let t = 0;
+  for (const x of g.values()) t += x.batch ? Math.ceil(x.q / x.batch) * x.prep : x.prep;
+  return t;
+}
+const prepMinutes = (o: any) => Math.max(basePrep(o), foodMinutes(o.order_items || []));
+const ownPrep = (o: any, supplierId: string) => Math.max(basePrep(o), foodMinutes(supplierItems(o, supplierId)));
+const hasHotFood = (o: any) => foodMinutes(o.order_items || []) > 0;
+const pickupAt = (o: any) => new Date(new Date(o.confirmed_at || o.created_at).getTime() + prepMinutes(o) * 60000).toISOString();
+// Courier / owner: when the food is ready and in which order to collect.
+const foodLine = (o: any) => hasHotFood(o) && ["NEW", "CONFIRMED"].includes(o.status)
+  ? `\n🍕 <b>Горячая еда${o.confirmed_at ? " будет готова к " + hm(pickupAt(o)) : " готовится ~" + prepMinutes(o) + " мин"}</b> — сначала забери напитки, еду последней, чтобы привезти всё вместе и горячим.`
+  : "";
 function supplierItems(o: any, supplierId: string) {
   return ((o.order_items || []) as any[]).filter((i) => i.supplier_id === supplierId)
     .sort((a, b) => Number(a.is_gift) - Number(b.is_gift) || String(a.name_snapshot).localeCompare(String(b.name_snapshot)));
 }
 function supplierText(o: any, supplierId: string) {
   const items = supplierItems(o, supplierId);
-  const due = new Date(new Date(o.confirmed_at || o.created_at).getTime() + prepMinutes(o) * 60000).toISOString();
+  const due = pickupAt(o);
+  const hot = hasHotFood(o), mine = ownPrep(o, supplierId), slowest = mine >= prepMinutes(o);
   const sum = items.reduce((t, i) => t + Number(i.supplier_cost_snapshot || 0) * Number(i.quantity), 0);
   const g = ((o.supplier_order_groups || []) as any[]).find((x) => x.supplier_id === supplierId) || {};
   return [
-    `📦 <b>Заказ №${o.order_number}</b> · подготовить за ${prepMinutes(o)} мин (к ${hm(due)})`,
+    hot && slowest
+      ? `🔥 <b>Заказ №${o.order_number}</b> · готовить сразу, курьер заберёт горячим к ${hm(due)}`
+      : `📦 <b>Заказ №${o.order_number}</b> · подготовить к ${hm(due)}${hot ? "" : ` (${prepMinutes(o)} мин)`}`,
+    hot && !slowest ? `🍕 В заказе горячая еда — курьер приедет к ${hm(due)}. Подготовьте к этому времени, пиво держите в холоде.` : null,
     o.fulfillment_type === "delivery" ? `🛵 Заберёт: ${esc(o.driverName || "курьер")}` : "🏪 Самовывоз",
     "",
     ...items.map((i) => `${i.is_gift ? "🎁" : "•"} ${esc(i.name_snapshot)} — ${qty(i.quantity, i.unit_snapshot)} × ${money(i.supplier_cost_snapshot)} = <b>${money(Number(i.supplier_cost_snapshot || 0) * Number(i.quantity))}</b>${i.is_gift ? " (подарок клиенту)" : ""}`),
