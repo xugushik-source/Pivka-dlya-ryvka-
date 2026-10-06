@@ -232,7 +232,7 @@ function phoneOk(v) {
 // database for its status — no phone, no login. Steps: Получен → Принят → Собран → (30 s) Едет → Доставлен / Отменён.
 const TRACK_KEY = 'pivka_last_order';
 const TRACK_KEEP_MS = 15 * 60e3; // a cancelled order's card disappears after 15 minutes
-const TRACK_DELIVERED_KEEP_MS = 24 * 3600e3; // a delivered order's card stays a day: the game (while attempts remain) and a quick reorder
+const TRACK_DELIVERED_KEEP_MS = 24 * 3600e3; // after delivery only the game stays — up to a day, while attempts remain
 // Someone who ordered in the last 12 hours comes back to see the status: skip the long intro credits.
 try {
   const o = JSON.parse(localStorage.getItem('pivka_last_order') || 'null');
@@ -290,6 +290,16 @@ async function refreshTrack() {
     const end = o.delivered_at || o.cancelled_at;
     const keep = o.status === 'DELIVERED' ? TRACK_DELIVERED_KEEP_MS : TRACK_KEEP_MS;
     if (end && new Date(o.now) - new Date(end) > keep) throw new Error('old');
+    // Delivered: the order itself leaves the page; only the «Рывок» game stays (up to a day) until the attempts are used.
+    if (o.status === 'DELIVERED') {
+      const g = await ryvokState(saved.id, 5e3);
+      if (!g || !(g.left > 0)) throw new Error('old');
+      clearTimeout(trackTick);
+      box.innerHTML = ryvokBlock(saved.id, g, document.documentElement.lang || 'ru').replace('🎮 Пока везём — сделай рывок!', tr('🎮 Доиграй рывок — чемпионат месяца!'));
+      box.hidden = false;
+      trackTimer = setTimeout(refreshTrack, 60e3);
+      return true
+    }
     renderTrack(o);
     if (!['DELIVERED', 'CANCELLED', 'REFUNDED'].includes(o.status)) trackTimer = setTimeout(refreshTrack, 20e3);
     else if (end) trackTimer = setTimeout(refreshTrack, Math.min(60e3, Math.max(5e3, keep - (new Date(o.now) - new Date(end)) + 2e3))); // hides itself on an open page; refreshes the game block
