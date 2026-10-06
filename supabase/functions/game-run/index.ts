@@ -4,7 +4,7 @@
 //            js/game/ryvok-sim.js) and stores the server's score — or rejects the run with a reason;
 //   state  → attempts left, own best, season (prize from config) and the board (name, place, score only).
 // Guards: allowed origins; one result per run; a run cannot be played faster than real time or last longer than
-// MAX_RUN_MINUTES; 30 starts an hour per network (in SQL); impossible inputs are rejected by replay().
+// MAX_RUN_MINUTES (6 h); 30 starts an hour per network (in SQL); impossible inputs are rejected by replay().
 // Deployed with verify_jwt = false (called with the public anon key only).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.4";
@@ -12,7 +12,7 @@ import "./ryvok-sim.js";
 
 // deno-lint-ignore no-explicit-any
 const Sim = (globalThis as any).RyvokSim;
-const MAX_RUN_MINUTES = 30;
+const MAX_RUN_MINUTES = 360; // 6 h incl. pauses: a long, honest run must never be lost
 const ALLOWED = [
   /^https:\/\/(www\.)?pivkadlaryvka\.ge$/,
   /^https:\/\/xugushik-source\.github\.io$/,

@@ -110,9 +110,9 @@
   // Server-side check: replay a run from the seed and the jump ticks. Returns the true score and end tick,
   // or an error if the inputs are impossible (out of order, after the end, more than the run allows…).
   function replay(seed, jumps, opts) {
-    const maxTicks = (opts && opts.maxTicks) || TPS * 60 * 15; // 15 minutes hard cap
+    const maxTicks = (opts && opts.maxTicks) || TPS * 60 * 60 * 6; // 6 hours hard cap (a long run must still count)
     const list = Array.isArray(jumps) ? jumps : [];
-    if (list.length > 20000) return { ok: false, error: 'too_many_inputs' };
+    if (list.length > 100000) return { ok: false, error: 'too_many_inputs' };
     for (let i = 0; i < list.length; i++) {
       if (!Number.isInteger(list[i]) || list[i] < 1 || (i && list[i] <= list[i - 1])) return { ok: false, error: 'bad_inputs' };
     }
