@@ -1,0 +1,100 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="robots" content="noindex"><meta name="theme-color" content="#080a0b">
+<title>РЫВОК — Пивка для рывка</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;background:#080a0b;color:#fff;font:15px system-ui,-apple-system,sans-serif;overscroll-behavior:none}
+.app{max-width:960px;margin:0 auto;padding:calc(10px + env(safe-area-inset-top)) 12px calc(18px + env(safe-area-inset-bottom));min-height:100vh;display:flex;flex-direction:column;gap:10px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.logo{font-weight:1000;line-height:.9;text-transform:uppercase;text-decoration:none;color:#fff;font-size:15px}.logo b{color:#ffb51b}
+.langs{display:flex;gap:4px}.langs button{background:#15191b;border:1px solid #2a3033;color:#cfd3d6;border-radius:10px;padding:6px 9px;font-weight:800;cursor:pointer}.langs button.on{background:#ffb51b;color:#171000;border-color:#ffb51b}
+h1,.caps{text-transform:uppercase}h1{margin:4px 0 0;font-size:34px;font-weight:1000;letter-spacing:.04em;color:#ffb51b}
+.stage{position:relative;width:100%;border-radius:18px;overflow:hidden;border:1px solid #272d30;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;cursor:pointer}
+.ryvokCanvas{display:block}
+.ov{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:14px;background:rgba(8,10,11,.62);transition:opacity .35s}
+.ov[hidden],.after[hidden]{display:none}
+.ov.top{justify-content:flex-start;padding-top:6%;background:linear-gradient(rgba(8,10,11,.55),rgba(8,10,11,0) 70%);pointer-events:none}
+.after{display:flex;align-items:center;justify-content:center;gap:16px;flex-wrap:wrap;background:#14181a;border:1px solid #272d30;border-radius:18px;padding:12px 14px;animation:pop .35s ease-out}
+.after .res{margin:0}
+.ov h2{margin:0;font-size:clamp(26px,7vw,46px);font-weight:1000;color:#ffb51b;letter-spacing:.04em}
+.ov p{margin:0;color:#e6e8ea;max-width:440px;font-size:clamp(13px,3.4vw,15px)}
+.ov .muted{color:#a9afb3;font-size:12px}
+.btn{border:0;border-radius:14px;padding:13px 24px;font-weight:1000;font-size:16px;background:#ffb51b;color:#171000;cursor:pointer;letter-spacing:.02em}
+.btn.ghost{background:transparent;border:1px solid #3a4145;color:#fff}
+.phrase{font-size:clamp(28px,8.5vw,58px)!important;line-height:1.05;color:#fff!important;text-shadow:0 3px 0 #000,0 0 24px rgba(255,181,27,.35);animation:pop .45s cubic-bezier(.2,1.6,.4,1)}
+@keyframes pop{0%{transform:scale(.4);opacity:0}100%{transform:none;opacity:1}}
+.res{display:grid;grid-template-columns:auto auto;gap:4px 14px;font-size:15px;margin:4px 0 8px}.res span{color:#a9afb3;text-align:right}.res b{text-align:left;font-variant-numeric:tabular-nums}
+.res .new{grid-column:1/-1;color:#22d36b;font-weight:900}
+.help{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.card{background:#14181a;border:1px solid #272d30;border-radius:14px;padding:11px 13px;color:#cfd3d6;font-size:13px}
+.card b{color:#fff}
+.note{color:#8b9296;font-size:12px;text-align:center}
+@media(prefers-reduced-motion:reduce){.phrase{animation:none}}
+</style></head><body>
+<main class="app">
+<div class="top"><a class="logo" href="../../"><span>Пивка</span><br><b>для рывка</b></a>
+<div class="langs"><button data-l="ru">RU</button><button data-l="ka">KA</button><button data-l="hy">HY</button></div></div>
+<h1 id="title">Рывок</h1>
+<div class="stage" id="stage">
+  <div class="ov" id="ovStart"><h2 class="caps">Рывок</h2><p id="howTouch">Тапни по экрану — прыжок. Перепрыгивай кружки и бутылки. Чем дальше — тем быстрее.</p><p class="muted" id="howKeys">Пробел или ↑ — прыжок</p><button class="btn" id="go" type="button">Сделать рывок</button></div>
+  <div class="ov" id="ovPause" hidden><h2>Пауза</h2><p>Ты отвлёкся — игра остановилась.</p><button class="btn" id="cont" type="button">Продолжить</button></div>
+  <div class="ov top" id="ovOver" hidden><h2 class="phrase" id="phrase">Ну всё… допился.</h2></div>
+</div>
+<div class="after" id="overMore" hidden><div class="res"><span>Твой результат</span><b id="rScore">0</b><span>Лучший результат</span><b id="rBest">0</b><div class="new" id="rNew" hidden>Новый рекорд!</div></div>
+  <button class="btn" id="again" type="button">Ещё рывок</button></div>
+<div class="help">
+  <div class="card"><b>🍺 Кружки и бутылки</b><br>Маленькие — легко. Большие и высокие — прыгай точнее.</div>
+  <div class="card"><b>⚡ Ускорение</b><br>Каждую секунду игра становится быстрее.</div>
+</div>
+<p class="note" id="proto">Тестовая версия: чемпионат, попытки и таблица лидеров подключатся после одобрения игры.</p>
+</main>
+<script src="../../js/game/ryvok-sim.js?v=20261007a"></script>
+<script src="../../js/game/ryvok-game.js?v=20261007a"></script>
+<script>
+'use strict';
+// Same language system as the shop: js/i18n.js translates the page; setLang must exist before it loads.
+window.setLang = function (l) {
+  document.documentElement.lang = l;
+  try { localStorage.setItem('pivka_lang', l) } catch (e) {}
+  document.querySelectorAll('.langs button').forEach((b) => b.classList.toggle('on', b.dataset.l === l));
+};
+</script>
+<script src="../../js/i18n.js?v=20261007a"></script>
+<script>
+(() => {
+  let l = 'ru';
+  try { l = localStorage.getItem('pivka_lang') || (navigator.language || '').slice(0, 2) } catch (e) {}
+  setLang(['ru', 'ka', 'hy'].includes(l) ? l : 'ru');
+  document.querySelectorAll('.langs button').forEach((b) => b.onclick = () => setLang(b.dataset.l));
+  const $ = (id) => document.getElementById(id);
+  const stage = $('stage');
+  let best = 0; try { best = Number(localStorage.getItem('ryvok_best_test') || 0) } catch (e) {}
+  const game = RyvokGame.mount(stage, {
+    onState(p) {
+      $('ovStart').hidden = true;
+      $('ovPause').hidden = p !== 'paused';
+      if (p !== 'over') { $('ovOver').hidden = true; $('overMore').hidden = true }
+    },
+    onEnd(r) {
+      best = Math.max(best, r.score); try { localStorage.setItem('ryvok_best_test', best) } catch (e) {}
+      $('rScore').textContent = r.score; $('rBest').textContent = best; $('rNew').hidden = !r.isBest || r.score === 0;
+      $('ovOver').hidden = false; // the phrase first…
+      setTimeout(() => { $('overMore').hidden = false }, 1100); // …then the result
+      window.__ryvokLast = r; // (test hook) the run as the server will receive it: seed + jump ticks
+    },
+  });
+  game.setBest(best);
+  const go = (e) => { if (e) e.stopPropagation(); game.start() };
+  $('go').onclick = go; $('again').onclick = go;
+  $('cont').onclick = (e) => { e.stopPropagation(); game.resume() };
+  // Space / ↑ on the start or result screen starts a run (desktop)
+  window.addEventListener('keydown', (e) => {
+    if ((e.code === 'Space' || e.key === 'ArrowUp') && !e.repeat) {
+      if (game.phase === 'ready' || (game.phase === 'over' && !$('overMore').hidden)) { e.preventDefault(); game.start() }
+      else if (game.phase === 'paused') { e.preventDefault(); game.resume() }
+    }
+  });
+  window.__ryvok = game;
+})();
+</script>
+</body></html>
