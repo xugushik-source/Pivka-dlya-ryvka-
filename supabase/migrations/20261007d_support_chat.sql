@@ -7,7 +7,7 @@
 --     «№51 · Гоча»; the first message is a card — name, phone, order number, status, sum. The owner just writes in the
 --     topic and the text goes back to the customer's chat on the site;
 --   • until that group is connected, messages come to the owner's bot chat marked «💬 ЧАТ», answer with «Ответить».
--- Swearing: the message is not delivered, the customer is warned and blocked — 30 min, again within 7 days → 24 h.
+-- Swearing: the message is not delivered, the customer is warned and blocked — 5 min, again within 7 days → 30 min.
 -- Tables: RLS on, no policies; the browser goes only through the functions below, the bot uses the service role.
 
 alter table public.telegram_links drop constraint if exists telegram_links_kind_check;
@@ -123,7 +123,7 @@ begin
   if v_recent >= 15 then return jsonb_build_object('error', 'rate'); end if;
 
   if private.support_is_rude(v_body) then
-    v_block := case when t.last_strike_at > now() - interval '7 days' then interval '24 hours' else interval '30 minutes' end;
+    v_block := case when t.last_strike_at > now() - interval '7 days' then interval '30 minutes' else interval '5 minutes' end;
     update public.support_threads set strikes = strikes + 1, last_strike_at = now(), blocked_until = now() + v_block
      where id = t.id returning * into t;
     insert into public.support_messages (thread_id, dir, body, author) values (t.id, 'SYS', 'rude', 'system');
