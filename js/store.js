@@ -175,7 +175,7 @@ function phoneOk(v) {
 // database for its status — no phone, no login. Steps: Получен → Принят → Собран → (30 s) Едет → Доставлен / Отменён.
 const TRACK_KEY = 'pivka_last_order';
 const TRACK_KEEP_MS = 15 * 60e3; // the card disappears 15 minutes after the order is delivered or cancelled
-const TRACK_GAME_KEEP_MS = 3 * 3600e3; // …but stays up to 3 hours while the order still has «Рывок» attempts
+const TRACK_GAME_KEEP_MS = 3 * 3600e3; // …stays up to 3 hours while the order still has «Рывок» attempts, closes at once when they are used
 // Someone who ordered in the last 12 hours comes back to see the status: skip the long intro credits.
 try {
   const o = JSON.parse(localStorage.getItem('pivka_last_order') || 'null');
@@ -232,7 +232,8 @@ async function refreshTrack() {
     o._at = Date.now();
     const end = o.delivered_at || o.cancelled_at;
     let keep = TRACK_KEEP_MS;
-    if (end && o.status === 'DELIVERED') { const g = await ryvokState(saved.id, 5e3); if (g && g.left > 0) keep = TRACK_GAME_KEEP_MS }
+    // Delivered: the card stays while «Рывок» attempts remain (up to 3 h) and closes as soon as they are used up.
+    if (end && o.status === 'DELIVERED') { const g = await ryvokState(saved.id, 5e3); if (g) keep = g.left > 0 ? TRACK_GAME_KEEP_MS : 0 }
     if (end && new Date(o.now) - new Date(end) > keep) throw new Error('old');
     renderTrack(o);
     if (!['DELIVERED', 'CANCELLED', 'REFUNDED'].includes(o.status)) trackTimer = setTimeout(refreshTrack, 20e3);
@@ -286,6 +287,8 @@ async function initOrderTrack() {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && trackSaved()) refreshTrack()
 });
+// Back from the game page (browser back keeps the old page in memory): re-check, so a finished game closes the card.
+window.addEventListener('pageshow', (e) => { if (e.persisted && trackSaved()) refreshTrack() });
 
 let passPlan = 'DAY';
 function openPass() {
