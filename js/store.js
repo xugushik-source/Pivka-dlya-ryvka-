@@ -174,8 +174,8 @@ function phoneOk(v) {
 // Order status for the customer. The browser keeps the id of the order it just placed (a random uuid) and asks the
 // database for its status — no phone, no login. Steps: Получен → Принят → Собран → (30 s) Едет → Доставлен / Отменён.
 const TRACK_KEY = 'pivka_last_order';
-const TRACK_KEEP_MS = 15 * 60e3; // the card disappears 15 minutes after the order is delivered or cancelled
-const TRACK_GAME_KEEP_MS = 3 * 3600e3; // …stays up to 3 hours while the order still has «Рывок» attempts, closes at once when they are used
+const TRACK_KEEP_MS = 15 * 60e3; // a cancelled order's card disappears after 15 minutes
+const TRACK_DELIVERED_KEEP_MS = 24 * 3600e3; // a delivered order's card stays a day: the game (while attempts remain) and a quick reorder
 // Someone who ordered in the last 12 hours comes back to see the status: skip the long intro credits.
 try {
   const o = JSON.parse(localStorage.getItem('pivka_last_order') || 'null');
@@ -231,13 +231,11 @@ async function refreshTrack() {
     if (!o) throw new Error('gone');
     o._at = Date.now();
     const end = o.delivered_at || o.cancelled_at;
-    let keep = TRACK_KEEP_MS;
-    // Delivered: the card stays while «Рывок» attempts remain (up to 3 h) and closes as soon as they are used up.
-    if (end && o.status === 'DELIVERED') { const g = await ryvokState(saved.id, 5e3); if (g) keep = g.left > 0 ? TRACK_GAME_KEEP_MS : 0 }
+    const keep = o.status === 'DELIVERED' ? TRACK_DELIVERED_KEEP_MS : TRACK_KEEP_MS;
     if (end && new Date(o.now) - new Date(end) > keep) throw new Error('old');
     renderTrack(o);
     if (!['DELIVERED', 'CANCELLED', 'REFUNDED'].includes(o.status)) trackTimer = setTimeout(refreshTrack, 20e3);
-    else if (end) trackTimer = setTimeout(refreshTrack, Math.min(60e3, Math.max(5e3, keep - (new Date(o.now) - new Date(end)) + 2e3))); // hides itself on an open page (and once the attempts are used)
+    else if (end) trackTimer = setTimeout(refreshTrack, Math.min(60e3, Math.max(5e3, keep - (new Date(o.now) - new Date(end)) + 2e3))); // hides itself on an open page; refreshes the game block
     return true
   } catch (e) {
     if (e.message === 'gone' || e.message === 'old') {
