@@ -79,19 +79,34 @@ function render(o, v) {
     h += '<div class="card"><h2>Что заказано</h2>' + lines.join('') + '<div class="sum"><span>Итого</span><span>' + money(v.total) + '</span></div></div>';
   }
   if (o.status === 'NEW') h += '<a class="btn yellow" href="./edit.html?o=' + encodeURIComponent(ORDER) + '">✏️ Изменить заказ</a>';
+  // Nobody has confirmed the order yet — the customer can still cancel it. After «Принят» — only by phone/WhatsApp.
+  if (o.status === 'NEW') h += '<button class="btn ghost" id="cancelOrder" type="button" style="width:100%;background:none;cursor:pointer">❌ Отменить заказ</button>';
   h += '<a class="btn wa" href="https://wa.me/' + PIVKA_CONFIG.whatsapp + '?text=' + encodeURIComponent('Заказ №' + o.order_number) + '" target="_blank" rel="noopener">Написать нам в WhatsApp</a>' +
     '<a class="btn ghost" href="./">← В магазин</a>';
   $('box').innerHTML = h;
+  const cancelBtn = $('cancelOrder');
+  if (cancelBtn) cancelBtn.onclick = cancelOrder;
   if (o.status === 'OUT_FOR_DELIVERY' && o.fulfillment !== 'pickup' && o.ready_at) {   // «Собран» → «Едет» on time
     const left = new Date(o.ready_at).getTime() + 30e3 - trackNow(o);
     if (left > 0) tick = setTimeout(() => render(o, v), left + 300);
   }
 }
+async function cancelOrder() {
+  const t = (x) => window.PIVKA_I18N ? PIVKA_I18N.translate(x, PIVKA_I18N.language) : x;
+  if (!confirm(t('Отменить заказ? Курьер и магазин сразу увидят отмену.'))) return;
+  const btn = $('cancelOrder'); btn.disabled = true;
+  try {
+    const r = await sb.rpc('order_cancel_by_customer', { p_order: ORDER });
+    if (r.error) throw r.error;
+    if (r.data && r.data.error === 'state') alert(t('Заказ уже принят — отменить можно только через WhatsApp.'));
+  } catch (e) { alert(t('Не получилось отменить. Напишите нам в WhatsApp.')) }
+  load();
+}
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') load() });
 window.setLang = l => { document.documentElement.lang = l };
 load();
 </script>
-<script src="./js/i18n.js?v=20261002a"></script>
+<script src="./js/i18n.js?v=20261007c"></script>
 <script>
 (() => { let l = 'ru'; try { l = localStorage.getItem('pivka_lang') || (navigator.language || '').slice(0, 2) } catch (e) {} setLang(['ru', 'ka', 'hy'].includes(l) ? l : 'ru') })();
 </script>
