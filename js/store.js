@@ -24,7 +24,7 @@ const CATS = [
   { slug: 'draft', ico: '🍺', label: 'Пиво', title: 'Пиво', grp: 'alc' },
   { slug: 'strong', ico: '🥃', label: 'Крепкое', title: 'Крепкие напитки', grp: 'alc', group: STRONG_GROUP },
   { slug: 'wine', ico: '🍷', label: 'Вино', title: 'Вино', grp: 'alc' },
-  { slug: 'pizza', ico: '🍕', label: 'Пицца', title: 'Пицца, хачапури, ламаджо', grp: 'food' },
+  { slug: 'pizza', ico: '🍕', label: 'Пицца и хачапури', title: 'Пицца и хачапури', grp: 'food' },
   { slug: 'fish', ico: '🐟', label: 'Рыба', title: 'Рыба', grp: 'food' },
   { slug: 'meat-snacks', ico: '🥩', label: 'Мясное', title: 'Мясные закуски', grp: 'food' },
   { slug: 'cheese', ico: '🧀', label: 'Сыр', title: 'Сыр', grp: 'food' },
