@@ -94,3 +94,15 @@ Before continuing, read `MASTER_SPEC.md` and this file. Continue from the first 
 - Локализация названий товаров: `products.name_i18n` {ka, hy}; `products.name` — RU. Редактируется в админке (Товары).
 - Шторка первого экрана: `js/intro.js` + `assets/hero/intro.css` (hold 3000 / reveal 1000, reduced motion 200/250).
 - Миграции: `supabase/migrations/20260928_*.sql` (применены в проекте uphnuzgaildmjrttmbaq).
+
+## Checkpoint 2026-10-07 — Голосовой продавец (ветка `feature/voice-seller-trilingual`, не в main)
+Архитектурное решение (после аудита):
+- Голос: OpenAI Realtime (`gpt-realtime-2.1`) по WebRTC прямо из браузера. Постоянный ключ — только в Supabase Secret
+  `OPENAI_API_KEY`; браузер получает одноразовый `ek_…` от функции `voice-session` (домены, лимиты по `store_events`).
+- ИИ только понимает речь и выбирает инструмент. Все товары/цены/рывки/подарки/доставка/PASS — существующая логика
+  `store.js` (общий глобальный scope классических скриптов), без второй формулы цен. Подбор корзины —
+  детерминированный `js/recommendation-engine.js`. Заказ отправляет только обычная форма (18+ сохраняется).
+- Модули отдельные (`js/voice-*.js`, `js/recommendation-engine.js`); `store.js` не менялся. Без ключа/при ошибке —
+  текстовый запасной режим (`js/voice-local.js`) и обычный магазин.
+- Новых таблиц и изменений схемы нет. Развёрнута новая функция `voice-session` (verify_jwt=false, своя проверка).
+Осталось владельцу: `OPENAI_API_KEY` в Supabase Secrets (см. VOICE_AGENT_SETUP.md).
