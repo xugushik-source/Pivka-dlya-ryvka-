@@ -112,7 +112,22 @@ function suppliersLine(o: any) {
 // «✏️ Изменить заказ» opens the edit page inside Telegram (Mini App); allowed until «Собран».
 const editable = (o: any) => ["NEW", "CONFIRMED", "PREPARING"].includes(o.status);
 const editButton = (o: any) => ({ text: "✏️ Изменить заказ", web_app: { url: `${SITE_URL}edit.html?o=${o.id}` } });
-const ownerKeyboard = (o: any) => ({ inline_keyboard: editable(o) ? [[editButton(o)]] : [] });
+const ocb = (act: string, id: string, arg = "") => `o|${act}|${id}${arg ? "|" + arg : ""}`;
+const cancellable = (o: any) => ["NEW", "CONFIRMED", "PREPARING", "OUT_FOR_DELIVERY"].includes(o.status);
+const ownerKeyboard = (o: any) => ({
+  inline_keyboard: [
+    ...(editable(o) ? [[editButton(o)]] : []),
+    ...(cancellable(o) ? [[{ text: "❌ Отменить заказ", callback_data: ocb("cm", o.id) }]] : []),
+  ],
+});
+const ownerReasonsKeyboard = (id: string) => ({
+  inline_keyboard: [
+    [{ text: "Передумал", callback_data: ocb("cancel", id, "mind") }, { text: "Нет денег", callback_data: ocb("cancel", id, "money") }],
+    [{ text: "Нет товара", callback_data: ocb("cancel", id, "stock") }, { text: "Не дозвонились", callback_data: ocb("cancel", id, "noanswer") }],
+    [{ text: "Тестовый заказ", callback_data: ocb("cancel", id, "test") }, { text: "Другое", callback_data: ocb("cancel", id, "other") }],
+    [{ text: "← Назад, не отменять", callback_data: ocb("bk", id) }],
+  ],
+});
 const ownerText = (o: any) => `🍺 <b>Заказ №${o.order_number}</b> · ${time(o.created_at)}\n${orderBody(o)}\n\n<b>Статус:</b> ${statusLine(o)}${suppliersLine(o)}`;
 
 const offerText = (o: any) => {
@@ -146,7 +161,7 @@ function cardKeyboard(o: any) {
     { text: "💳 Безнал", callback_data: cb("deliver", o.id, "card") },
     { text: "📲 Перевод", callback_data: cb("deliver", o.id, "transfer") },
   ]);
-  if (["NEW", "CONFIRMED", "PREPARING", "OUT_FOR_DELIVERY"].includes(o.status)) rows.push([{ text: "❌ Отменить заказ", callback_data: cb("cm", o.id) }]);
+  if (cancellable(o)) rows.push([{ text: "❌ Отменить заказ", callback_data: cb("cm", o.id) }]);
   return { inline_keyboard: rows };
 }
 const reasonsKeyboard = (id: string) => ({
@@ -306,6 +321,21 @@ async function onOrderCancelled(cfg: Cfg, orderId: string) {
   }
   for (const chat of chats) await quiet(tg(cfg, "sendMessage", { chat_id: chat, text: `❌ Заказ №${o.order_number} отменён — не готовьте его.` }));
   await refreshOwner(cfg, o);
+  await refreshCourier(cfg, o);
+  // Offers to couriers who did not take the order: «Беру» must not stay pressable.
+  const driverChat = await chatOf("DRIVER", o.driverId);
+  const { data: offers } = await db.from("telegram_messages").select("chat_id,message_id").eq("order_id", o.id).eq("kind", "DRIVER_OFFER");
+  for (const m of offers || []) {
+    if (m.chat_id === driverChat) continue;
+    await quiet(tg(cfg, "editMessageText", { chat_id: m.chat_id, message_id: m.message_id, text: `❌ Заказ №${o.order_number} отменён.` }));
+  }
+  // Who cancelled is in the reason: «… (владелец)», «… (курьер Имя)», «Клиент отменил на сайте», or admin (no suffix).
+  const reason = String(o.cancellation_reason || "");
+  const byOwner = reason.endsWith("(владелец)"), byDriver = reason.includes("(курьер ");
+  const line = `❌ <b>Заказ №${o.order_number} отменён</b>${reason ? " — " + esc(reason) : ""}\n` +
+    `👤 ${esc(o.customers?.full_name || "")} · ${esc(o.customers?.phone || "")} · ${money(o.total)}`;
+  if (!byOwner) await sendToKind(cfg, "OWNER", line);
+  if (driverChat && !byDriver) await quiet(tg(cfg, "sendMessage", { chat_id: driverChat, text: line, parse_mode: "HTML" }));
   // Poured beer can't go back to the supplier: say who it was written off on.
   const { data: wo } = await db.from("order_writeoffs").select("name,quantity,amount,charged_to").eq("order_id", o.id).eq("reason", "CANCEL");
   if (wo?.length) {
@@ -315,8 +345,7 @@ async function onOrderCancelled(cfg: Cfg, orderId: string) {
       wo.map((w: any) => `${esc(w.name)} ${Number(w.quantity)} л`).join(", ") +
       `.\n<b>${money(sum)}</b> по закупу ${onDriver ? "записано на курьера " + esc(o.driverName || "") : "списано на владельца"}.`;
     await sendToKind(cfg, "OWNER", text);
-    const driverChat = onDriver ? await chatOf("DRIVER", o.driverId) : null;
-    if (driverChat) await quiet(tg(cfg, "sendMessage", { chat_id: driverChat, text, parse_mode: "HTML" }));
+    if (onDriver && driverChat) await quiet(tg(cfg, "sendMessage", { chat_id: driverChat, text, parse_mode: "HTML" }));
   }
   return chats.size;
 }
@@ -570,12 +599,33 @@ const STATE: Record<string, string> = {
   DELIVERED: "уже доставлен", CANCELLED: "уже отменён", REFUNDED: "возвращён",
 };
 
+// Owner's order message: «❌ Отменить заказ» → reason. Checked in the database by the owner's Telegram chat.
+async function onOwnerCallback(cfg: Cfg, q: any, act: string, id: string, arg: string) {
+  const answer = (text = "", alert = false) => quiet(tg(cfg, "answerCallbackQuery", { callback_query_id: q.id, text, show_alert: alert }));
+  const chat = q.message?.chat?.id, msg = q.message?.message_id;
+  if (act === "cm") { await quiet(tg(cfg, "editMessageReplyMarkup", { chat_id: chat, message_id: msg, reply_markup: ownerReasonsKeyboard(id) })); return answer("Почему отменяем?"); }
+  if (act === "bk") {
+    const o = await loadOrder(id);
+    await quiet(tg(cfg, "editMessageReplyMarkup", { chat_id: chat, message_id: msg, reply_markup: ownerKeyboard(o) }));
+    return answer();
+  }
+  if (act !== "cancel") return answer();
+  const { data: r, error } = await db.rpc("tg_owner_cancel", { p_chat: chat, p_order: id, p_arg: arg || null });
+  if (error) { console.error(error); return answer("Не получилось: " + error.message, true); }
+  const o = await loadOrder(id);
+  if (r?.error === "state") { await refreshOwner(cfg, o); return answer(`Заказ ${STATE[r.status] || r.status}`, true); }
+  if (r?.error) return answer(r.error === "not_owner" ? "Эта кнопка только для владельца." : "Не получилось", true);
+  await refreshOwner(cfg, o); // the trigger also refreshes it, together with courier and suppliers
+  return answer("Заказ отменён");
+}
+
 async function onCallback(cfg: Cfg, q: any) {
   const answer = (text = "", alert = false) => quiet(tg(cfg, "answerCallbackQuery", { callback_query_id: q.id, text, show_alert: alert }));
   const chat = q.message?.chat?.id, msg = q.message?.message_id;
   const [kind, act, id, arg] = String(q.data || "").split("|");
   if (kind === "s" && id && chat) return onSupplierCallback(cfg, q, act, id, arg ?? "");
   if (kind === "d" && id && chat) return onDayCallback(cfg, q, act, id);
+  if (kind === "o" && id && chat) return onOwnerCallback(cfg, q, act, id, arg ?? "");
   if (kind !== "c" || !id || !chat) return answer();
 
   if (act === "cm") { await quiet(tg(cfg, "editMessageReplyMarkup", { chat_id: chat, message_id: msg, reply_markup: reasonsKeyboard(id) })); return answer("Почему отменяем?"); }
@@ -608,11 +658,7 @@ async function onCallback(cfg: Cfg, q: any) {
       await quiet(tg(cfg, "editMessageText", { chat_id: m.chat_id, message_id: m.message_id, text: `Заказ №${o.order_number} взял ${esc(r.driver)}.` }));
     }
   }
-  await refreshOwner(cfg, o);
-  if (act === "cancel") {
-    await sendToKind(cfg, "OWNER", `❌ <b>Заказ №${o.order_number} отменён</b> — ${esc(o.cancellation_reason || "")}\n` +
-      `👤 ${esc(o.customers?.full_name || "")} · ${esc(o.customers?.phone || "")} · ${money(o.total)}`);
-  }
+  await refreshOwner(cfg, o); // a cancel also reaches onOrderCancelled (database trigger), which tells the owner
   return answer({ take: "Заказ ваш — позвоните клиенту", accept: "Принят", ready: "Клиент видит: едет", deliver: "Доставлен 🎉", cancel: "Отменён" }[act] || "");
 }
 
