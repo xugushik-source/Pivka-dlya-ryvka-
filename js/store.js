@@ -276,8 +276,14 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && trackSaved()) refreshTrack()
 });
 
+let passPlan = 'DAY';
 function openPass() {
   passOverlay.classList.add('on')
+}
+function pickPassPlan(el) {
+  passPlan = el.dataset.plan;
+  document.querySelectorAll('.passPlan').forEach(b => b.classList.toggle('on', b === el));
+  passGo.textContent = 'Оформить PASS за ' + (passPlan === 'NIGHT' ? 40 : 20) + ' ₾ →'
 }
 async function activatePass() {
   if (passPhone.value.trim().length < 6) {
@@ -285,8 +291,8 @@ async function activatePass() {
     return
   }
   try {
-    const r = await PIVKA_DB.startPass(passName.value.trim(), passPhone.value.trim());
-    passBody.innerHTML = '<div class="success"><div class="big">👑</div><h2>PASS подготовлен</h2><p class="muted">20 ₾ / месяц. Оплатите переводом — после оплаты мы включим PASS: с 12:00 до 22:00 доставка от 20 ₾ бесплатно, меньше — 3 ₾.</p>' + [...paymentLinks.querySelectorAll('a')].map(x => x.outerHTML).join('') + '</div>'
+    const r = await PIVKA_DB.startPass(passName.value.trim(), passPhone.value.trim(), passPlan);
+    passBody.innerHTML = '<div class="success"><div class="big">👑</div><h2>PASS подготовлен</h2><p class="muted">' + (r.plan === 'NIGHT' ? 'Ночной PASS — 40 ₾ / месяц.' : 'Дневной PASS — 20 ₾ / месяц.') + ' Оплатите переводом — после оплаты мы включим PASS на 30 дней.</p>' + [...paymentLinks.querySelectorAll('a')].map(x => x.outerHTML).join('') + '</div>'
   } catch (e) {
     alert(e.message)
   }
@@ -543,7 +549,7 @@ function applyNight() {
 // Delivery rule for «now»: day 4 ₾ / free from 50 ₾, after 23:00 7 ₾ / free from 80 ₾ (numbers come from the server).
 function deliveryRule() {
   const d = NIGHT?.delivery || {}, n = inWin(tbilisiHM(), d.night_from || '23:00', d.night_to || '08:00');
-  return { fee: Number(n ? d.night_fee ?? 7 : d.day_fee ?? 4), free: Number(n ? d.night_free_from ?? 80 : d.day_free_from ?? 50) }
+  return { fee: Number(n ? d.night_fee ?? 7 : d.day_fee ?? 3), free: Number(n ? d.night_free_from ?? 80 : d.day_free_from ?? 50) }
 }
 async function loadNight() {
   try {
@@ -997,7 +1003,7 @@ function updateCheckoutTotal() {
   coTotal.textContent = money(base + fee);
   checkoutNotice.style.display = fulfillment === 'delivery' ? 'block' : 'none';
   const min = opt?.dataset?.min && Number(opt.dataset.min) ? ' · Минимальный заказ ' + money(opt.dataset.min) : '';
-  const feeText = deliveryQuoteState.reason === 'FREE_FROM' ? 'Доставка бесплатно — заказ от ' + deliveryRule().free + ' ₾' : deliveryQuoteState.reason === 'ZONE' && fee > 0 ? 'Доставка: ' + money(fee) + ' · от ' + deliveryRule().free + ' ₾ — бесплатно' : deliveryQuoteState.reason === 'PASS_SMALL' ? 'Доставка: ' + money(fee) + ' · с PASS от 20 ₾ — бесплатно' : deliveryQuoteState.reason === 'PASS' ? 'Доставка: 0 ₾ — PASS' : mode === 'HIDDEN' ? '' : mode === 'FREE' ? 'Доставка бесплатно' : 'Доставка: ' + money(fee);
+  const feeText = deliveryQuoteState.reason === 'FREE_FROM' ? 'Доставка бесплатно — заказ от ' + deliveryRule().free + ' ₾' : deliveryQuoteState.reason === 'ZONE' && fee > 0 ? 'Доставка: ' + money(fee) + ' · от ' + deliveryRule().free + ' ₾ — бесплатно' : deliveryQuoteState.reason === 'PASS_SMALL' ? 'Доставка: ' + money(fee) + ' · с PASS от 30 ₾ — бесплатно' : deliveryQuoteState.reason === 'PASS' ? 'Доставка: 0 ₾ — PASS' : mode === 'HIDDEN' ? '' : mode === 'FREE' ? 'Доставка бесплатно' : 'Доставка: ' + money(fee);
   checkoutNotice.textContent = fulfillment === 'delivery' ? (coZone.value ? (feeText + min).replace(/^ · /, '') || 'Доставка' : 'Выбери зону доставки') : 'Самовывоз — без платы за доставку'
 }
 
