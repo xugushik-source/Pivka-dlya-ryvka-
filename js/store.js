@@ -570,11 +570,13 @@ function bundleItemsText(b) {
 
 function renderBundles() {
   applyNight();
-  if (!bundleCatalog.length) {
-    bundles.innerHTML = '<div class="empty">Готовые рывки скоро появятся</div>';
+  // At night Рывки with beer or food are not sold: hide them instead of a wall of disabled cards.
+  const shown = bundleCatalog.filter(b => b.unavailable_reason !== 'CLOSED_NOW');
+  if (!shown.length) {
+    bundles.innerHTML = '<div class="empty">' + (bundleCatalog.length ? tr('🌙 Ночью готовые рывки не собираем — возьми крепкое и закуску в «Собрать свой». Рывки — с 11:00.') : 'Готовые рывки скоро появятся') + '</div>';
     return
   }
-  bundles.innerHTML = bundleCatalog.map((b, n) => {
+  bundles.innerHTML = shown.map((b, n) => {
     const ok = b.available !== false,
       on = ok && checkoutBundle?.id === b.id,
       save = Number(b.savings || 0),
