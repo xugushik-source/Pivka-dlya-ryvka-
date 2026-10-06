@@ -175,6 +175,7 @@ function phoneOk(v) {
 // database for its status — no phone, no login. Steps: Получен → Принят → Собран → (30 s) Едет → Доставлен / Отменён.
 const TRACK_KEY = 'pivka_last_order';
 const TRACK_KEEP_MS = 15 * 60e3; // the card disappears 15 minutes after the order is delivered or cancelled
+const TRACK_GAME_KEEP_MS = 3 * 3600e3; // …but stays up to 3 hours while the order still has «Рывок» attempts
 // Someone who ordered in the last 12 hours comes back to see the status: skip the long intro credits.
 try {
   const o = JSON.parse(localStorage.getItem('pivka_last_order') || 'null');
@@ -201,8 +202,15 @@ function renderTrack(o) {
     trackSteps(o).map(s => '<li class="' + s[2] + '"><i></i><span>' + esc(s[0]) + '</span><time>' + trackTime(s[1]) + '</time></li>').join('') + '</ol>' +
     // Until the courier confirms, the customer can still change the order.
     (o.status === 'NEW' ? '<a class="trackEdit" href="./edit.html?o=' + encodeURIComponent(trackSaved()?.id || '') + '">✏️ Изменить заказ</a>' : '') +
+    '<div class="ryvokSlot"></div>' +
     '<a class="trackMore" href="./order.html?o=' + encodeURIComponent(trackSaved()?.id || '') + '">Что заказано и статус →</a>';
   box.hidden = false;
+  // «Рывок» game: appears only after the courier pressed «Еду»; loads on its own and never blocks the card.
+  const gid = trackSaved()?.id;
+  if (gid && ryvokEligible(o)) ryvokState(gid).then(g => {
+    const slot = box.querySelector('.ryvokSlot');
+    if (slot && trackSaved()?.id === gid) slot.innerHTML = ryvokBlock(gid, g, document.documentElement.lang || 'ru');
+  });
   if (o.status === 'OUT_FOR_DELIVERY' && o.fulfillment !== 'pickup' && o.ready_at) {
     // Switch «Собран» → «Едет» exactly on time, without waiting for the next poll.
     const left = new Date(o.ready_at).getTime() + 30e3 - trackNow(o);
@@ -223,10 +231,12 @@ async function refreshTrack() {
     if (!o) throw new Error('gone');
     o._at = Date.now();
     const end = o.delivered_at || o.cancelled_at;
-    if (end && new Date(o.now) - new Date(end) > TRACK_KEEP_MS) throw new Error('old');
+    let keep = TRACK_KEEP_MS;
+    if (end && o.status === 'DELIVERED') { const g = await ryvokState(saved.id, 5e3); if (g && g.left > 0) keep = TRACK_GAME_KEEP_MS }
+    if (end && new Date(o.now) - new Date(end) > keep) throw new Error('old');
     renderTrack(o);
     if (!['DELIVERED', 'CANCELLED', 'REFUNDED'].includes(o.status)) trackTimer = setTimeout(refreshTrack, 20e3);
-    else if (end) trackTimer = setTimeout(refreshTrack, Math.max(5e3, TRACK_KEEP_MS - (new Date(o.now) - new Date(end)) + 2e3)); // hides itself on an open page
+    else if (end) trackTimer = setTimeout(refreshTrack, Math.min(60e3, Math.max(5e3, keep - (new Date(o.now) - new Date(end)) + 2e3))); // hides itself on an open page (and once the attempts are used)
     return true
   } catch (e) {
     if (e.message === 'gone' || e.message === 'old') {

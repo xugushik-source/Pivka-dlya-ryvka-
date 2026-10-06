@@ -94,7 +94,7 @@ function statusLine(o: any) {
   switch (o.status) {
     case "NEW": return o.driverName ? `🙋 Взял ${esc(o.driverName)} — звонит клиенту` : (o.fulfillment_type === "delivery" ? "⏳ Ждёт курьера" : "⏳ Новый");
     case "CONFIRMED": return `✅ Принят ${hm(o.confirmed_at)}${who}`;
-    case "PREPARING": return `📦 Собирается${who}`;
+    case "PREPARING": return `📦 Собран ${hm(o.ready_at)}${who}`;
     case "OUT_FOR_DELIVERY": return `🚗 Едет с ${hm(o.ready_at)}${who}`;
     case "DELIVERED": return `🎉 Доставлен ${hm(o.delivered_at)}${who}${o.paidWith ? " · " + PAY[o.paidWith] : ""}`;
     case "CANCELLED": return `❌ Отменён${o.cancellation_reason ? ": " + esc(o.cancellation_reason) : ""}`;
@@ -139,7 +139,8 @@ const offerText = (o: any) => {
 
 const HINT: Record<string, string> = {
   NEW: "📞 Позвоните клиенту, уточните заказ и адрес. Клиент что-то меняет — «✏️ Изменить заказ». Всё верно — «Принят».",
-  CONFIRMED: "Заберите заказ и нажмите «Собран» — клиент увидит, что заказ едет.",
+  CONFIRMED: "Заберите заказ и нажмите «📦 Собран».",
+  PREPARING: "Выезжаете к клиенту — нажмите «🛵 Еду»: клиент увидит, что заказ едет.",
   OUT_FOR_DELIVERY: "Отдали заказ? Выберите, как клиент заплатил:",
 };
 const cardText = (o: any) =>
@@ -154,7 +155,8 @@ function cardKeyboard(o: any) {
       encodeURIComponent(o.address_snapshot + ", " + (o.service_cities?.name || "")) }]);
   }
   if (o.status === "NEW") rows.push([{ text: "✅ Клиент подтвердил — Принят", callback_data: cb("accept", o.id) }]);
-  if (o.status === "CONFIRMED" || o.status === "PREPARING") rows.push([{ text: "📦 Собран — забрал заказ", callback_data: cb("ready", o.id) }]);
+  if (o.status === "CONFIRMED") rows.push([{ text: "📦 Собран — забрал заказ", callback_data: cb("ready", o.id) }]);
+  if (o.status === "PREPARING") rows.push([{ text: "🛵 Еду", callback_data: cb("go", o.id) }]);
   if (editable(o)) rows.push([editButton(o)]);
   if (o.status === "OUT_FOR_DELIVERY") rows.push([
     { text: "💵 Наличные", callback_data: cb("deliver", o.id, "cash") },
@@ -659,7 +661,7 @@ async function onCallback(cfg: Cfg, q: any) {
     }
   }
   await refreshOwner(cfg, o); // a cancel also reaches onOrderCancelled (database trigger), which tells the owner
-  return answer({ take: "Заказ ваш — позвоните клиенту", accept: "Принят", ready: "Клиент видит: едет", deliver: "Доставлен 🎉", cancel: "Отменён" }[act] || "");
+  return answer({ take: "Заказ ваш — позвоните клиенту", accept: "Принят", ready: "Собран — теперь «🛵 Еду»", go: "Клиент видит: едет", deliver: "Доставлен 🎉", cancel: "Отменён" }[act] || "");
 }
 
 async function onUpdate(cfg: Cfg, u: any) {

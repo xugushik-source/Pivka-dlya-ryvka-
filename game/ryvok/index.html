@@ -1,0 +1,253 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="robots" content="noindex"><meta name="theme-color" content="#080a0b">
+<title>РЫВОК — Пивка для рывка</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;background:#080a0b;color:#fff;font:15px system-ui,-apple-system,sans-serif;overscroll-behavior:none}
+a{color:inherit}
+.app{max-width:960px;margin:0 auto;padding:calc(10px + env(safe-area-inset-top)) 12px calc(18px + env(safe-area-inset-bottom));min-height:100vh;display:flex;flex-direction:column;gap:10px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.logo{font-weight:1000;line-height:.9;text-transform:uppercase;text-decoration:none;color:#fff;font-size:15px}.logo b{color:#ffb51b}
+.langs{display:flex;gap:4px}.langs button{background:#15191b;border:1px solid #2a3033;color:#cfd3d6;border-radius:10px;padding:6px 9px;font-weight:800;cursor:pointer}.langs button.on{background:#ffb51b;color:#171000;border-color:#ffb51b}
+h1,.caps{text-transform:uppercase}h1{margin:4px 0 0;font-size:34px;font-weight:1000;letter-spacing:.04em;color:#ffb51b}
+.stage{position:relative;width:100%;border-radius:18px;overflow:hidden;border:1px solid #272d30;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;cursor:pointer}
+.ryvokCanvas{display:block}
+.ov{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:14px;background:rgba(8,10,11,.62);transition:opacity .35s}
+[hidden]{display:none!important}
+.ov.top{justify-content:flex-start;padding-top:6%;background:linear-gradient(rgba(8,10,11,.55),rgba(8,10,11,0) 70%);pointer-events:none}
+.ov h2{margin:0;font-size:clamp(26px,7vw,46px);font-weight:1000;color:#ffb51b;letter-spacing:.04em}
+.ov p{margin:0;color:#e6e8ea;max-width:440px;font-size:clamp(13px,3.4vw,15px)}
+.ov .muted{color:#a9afb3;font-size:12px}
+.btn{border:0;border-radius:14px;padding:13px 24px;font-weight:1000;font-size:16px;background:#ffb51b;color:#171000;cursor:pointer;letter-spacing:.02em;text-decoration:none;display:inline-block}
+.btn[disabled]{opacity:.55;cursor:default}
+.btn.ghost{background:transparent;border:1px solid #3a4145;color:#fff}
+.phrase{font-size:clamp(28px,8.5vw,58px)!important;line-height:1.05;color:#fff!important;text-shadow:0 3px 0 #000,0 0 24px rgba(255,181,27,.35);animation:pop .45s cubic-bezier(.2,1.6,.4,1)}
+@keyframes pop{0%{transform:scale(.4);opacity:0}100%{transform:none;opacity:1}}
+.invite{display:flex;flex-direction:column;gap:3px;background:linear-gradient(90deg,rgba(255,181,27,.16),rgba(255,181,27,.04));border:1px solid rgba(255,181,27,.35);border-radius:14px;padding:10px 13px}
+.invite>b{font-size:17px;color:#ffb51b}.invite>span{font-size:13px;color:#e6e8ea}.invite .prize{color:#fff;font-weight:900}
+.after{display:flex;flex-direction:column;align-items:center;gap:10px;background:#14181a;border:1px solid #272d30;border-radius:18px;padding:12px 14px;text-align:center;animation:pop .35s ease-out}
+.res{display:grid;grid-template-columns:auto auto;gap:4px 14px;font-size:15px}.res span{color:#a9afb3;text-align:right}.res b{text-align:left;font-variant-numeric:tabular-nums}
+.res .new{grid-column:1/-1;color:#22d36b;font-weight:900}
+.msg{font-size:13px;color:#cfd3d6;max-width:440px;margin:0}.msg.err{color:#ff8f8f}
+.left{font-size:13px;color:#cfd3d6}.left b{color:#ffb51b;font-size:15px}
+.nick input{background:#0d1012;border:1px solid #3a4145;color:#fff;border-radius:10px;padding:9px 11px;font-size:16px;width:200px;max-width:100%;text-align:center}
+.board{background:#14181a;border:1px solid #272d30;border-radius:14px;padding:11px 13px}
+.board h3{margin:0 0 8px;font-size:14px;color:#ffcf6b;text-transform:uppercase;letter-spacing:.04em}
+.board ol{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.board li{display:grid;grid-template-columns:28px 1fr auto;gap:8px;font-variant-numeric:tabular-nums;padding:3px 6px;border-radius:8px}
+.board li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.board li.me{background:rgba(255,181,27,.14);color:#ffcf6b;font-weight:900}
+.board li i{font-style:normal;color:#8b9296}
+.board .empty,.board .note2{color:#8b9296;font-size:13px;margin-top:6px}
+.help{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.card{background:#14181a;border:1px solid #272d30;border-radius:14px;padding:11px 13px;color:#cfd3d6;font-size:13px}
+.card b{color:#fff}
+.note{color:#8b9296;font-size:12px;text-align:center}
+@media(prefers-reduced-motion:reduce){.phrase,.after{animation:none}}
+</style></head><body>
+<main class="app">
+<div class="top"><a class="logo" href="../../"><span>Пивка</span><br><b>для рывка</b></a>
+<div class="langs"><button data-l="ru">RU</button><button data-l="ka">KA</button><button data-l="hy">HY</button></div></div>
+<h1 id="title">Рывок</h1>
+<div class="invite" id="invite"><b>Пока везём — сделай рывок!</b><span><span>Приз месяца:</span> <span class="prize" id="prize" translate="no">4 порции шашлыка</span></span><span>Лучший результат месяца забирает приз. За каждый заказ — 3 попытки.</span></div>
+<div class="stage" id="stage">
+  <div class="ov" id="ovStart"><h2 class="caps">Рывок</h2>
+    <p id="howTouch">Тапни по экрану — прыжок. Перепрыгивай кружки и бутылки. Чем дальше — тем быстрее.</p>
+    <p class="muted" id="howKeys">Пробел или ↑ — прыжок</p>
+    <div class="nick" id="nickBox" hidden><input id="nick" maxlength="16" autocomplete="nickname" placeholder="Имя для таблицы"></div>
+    <button class="btn" id="go" type="button">Сделать рывок</button>
+    <div class="left" id="leftStart" hidden><span>Осталось попыток:</span> <b class="n">3</b></div>
+    <p class="msg err" id="startErr" hidden></p>
+  </div>
+  <div class="ov" id="ovNoOrder" hidden><h2 class="caps">Рывок</h2><p>Игра открывается после заказа: каждый заказ — 3 попытки в чемпионате.</p><a class="btn" href="../../">В магазин</a></div>
+  <div class="ov" id="ovPause" hidden><h2>Пауза</h2><p>Ты отвлёкся — игра остановилась.</p><button class="btn" id="cont" type="button">Продолжить</button></div>
+  <div class="ov top" id="ovOver" hidden><h2 class="phrase" id="phrase">Ну всё… допился.</h2></div>
+</div>
+<div class="after" id="overMore" hidden>
+  <div class="res"><span>Твой результат</span><b id="rScore">0</b><span>Лучший результат</span><b id="rBest">0</b><span id="rPlaceL" hidden>Место</span><b id="rPlace" hidden>—</b><div class="new" id="rNew" hidden>Новый рекорд!</div></div>
+  <p class="msg" id="rPending" hidden>Результат попадёт в таблицу, когда заказ подтвердят.</p>
+  <p class="msg err" id="rRejected" hidden>Результат не засчитан: проверка не прошла.</p>
+  <p class="msg err" id="rNet" hidden>Нет связи с сервером. Результат сохранён — отправь ещё раз.</p>
+  <button class="btn ghost" id="resend" type="button" hidden>Отправить результат</button>
+  <div class="left" id="leftOver" hidden><span>Осталось попыток:</span> <b class="n">0</b></div>
+  <button class="btn" id="again" type="button">Ещё рывок</button>
+  <div id="noMore" hidden><p class="msg" id="noMoreMsg">Попытки за этот заказ закончились. Новый заказ — ещё 3 попытки.</p><br><a class="btn" href="../../">В магазин</a></div>
+</div>
+<div class="board" id="board" hidden><h3>Таблица лидеров</h3><ol id="boardList" translate="no"></ol><div class="empty" id="boardEmpty" hidden>Пока никого — стань первым!</div><div class="note2" id="boardMe" hidden><span>Твоё место:</span> <b class="n"></b></div></div>
+<div class="help">
+  <div class="card"><b>🍺 Кружки и бутылки</b><br>Маленькие — легко. Большие и высокие — прыгай точнее.</div>
+  <div class="card"><b>⚡ Ускорение</b><br>Каждую секунду игра становится быстрее.</div>
+  <div class="card"><b>🏆 Правила</b><br>Засчитывается твой лучший результат за месяц. Приз выдаётся после проверки результата.</div>
+</div>
+<a class="note" id="toOrder" hidden style="color:#ffcf6b;font-weight:800;text-decoration:none">Мой заказ и статус →</a>
+<p class="note" id="proto" hidden>Тренировка: результат не идёт в чемпионат.</p>
+</main>
+<script src="../../config.js"></script>
+<script src="../../js/game/ryvok-sim.js?v=20261007c"></script>
+<script src="../../js/game/ryvok-game.js?v=20261007c"></script>
+<script>
+'use strict';
+// Same language system as the shop: js/i18n.js translates the page; setLang must exist before it loads.
+window.setLang = function (l) {
+  document.documentElement.lang = l;
+  try { localStorage.setItem('pivka_lang', l) } catch (e) {}
+  document.querySelectorAll('.langs button').forEach((b) => b.classList.toggle('on', b.dataset.l === l));
+  if (window.__ryvokLang) window.__ryvokLang();
+};
+</script>
+<script src="../../js/i18n.js?v=20261007c"></script>
+<script>
+(() => {
+  // The game is a separate page: whatever happens here, the shop, the cart and the order are untouched.
+  // It knows only the order id from the link (?o=…) — the same key the order status page uses.
+  let l = 'ru';
+  try { l = localStorage.getItem('pivka_lang') || (navigator.language || '').slice(0, 2) } catch (e) {}
+  setLang(['ru', 'ka', 'hy'].includes(l) ? l : 'ru');
+  document.querySelectorAll('.langs button').forEach((b) => b.onclick = () => setLang(b.dataset.l));
+  const $ = (id) => document.getElementById(id);
+  const q = new URLSearchParams(location.search);
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const ORDER = UUID.test(q.get('o') || '') ? q.get('o') : null;
+  const DEMO = !ORDER && q.get('demo') === '1';   // practice, never counted
+  const CFG = window.PIVKA_CONFIG || {};
+  const API = CFG.supabaseUrl + '/functions/v1/game-run';
+  const lang = () => document.documentElement.lang || 'ru';
+  const show = (id, on) => { $(id).hidden = !on };
+  const setN = (id, n) => { $(id).querySelector('.n').textContent = n };
+  const MSG = { not_yet: 'Игра откроется, когда курьер выедет к тебе.', cancelled: 'Заказ отменён — по нему играть нельзя.', old_order: 'Этот заказ слишком старый для чемпионата.', season: 'Сейчас нет активного чемпионата.', rate: 'Слишком много попыток подряд. Попробуй позже.', version: 'Игра обновилась — обнови страницу.', net: 'Нет связи с сервером. Попробуй ещё раз.' };
+
+  async function api(body) {
+    const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 12000);
+    try {
+      const r = await fetch(API, { method: 'POST', signal: ctl.signal, headers: { 'Content-Type': 'application/json', apikey: CFG.supabaseAnonKey || '' }, body: JSON.stringify(body) });
+      return await r.json().catch(() => ({ error: 'server' }));
+    } finally { clearTimeout(to) }
+  }
+
+  // ---- server state: season (prize from config), attempts, best, board
+  let st = null, run = null, pending = null, best = 0;
+  function renderSeason() {
+    const s = st && st.season; if (!s) return;
+    const p = s.prizeTitle && (s.prizeTitle[lang()] || s.prizeTitle.ru); if (p) $('prize').textContent = p;
+  }
+  window.__ryvokLang = renderSeason;
+  function renderBoard() {
+    if (!st || !Array.isArray(st.top)) return;
+    show('board', true);
+    const ol = $('boardList'); ol.textContent = '';
+    st.top.forEach((r) => {
+      const li = document.createElement('li'); if (r.me) li.className = 'me';
+      const i = document.createElement('i'); i.textContent = r.place;
+      const n = document.createElement('span'); n.textContent = r.name || '—';
+      const b = document.createElement('b'); b.textContent = r.score;
+      li.append(i, n, b); ol.append(li);
+    });
+    show('boardEmpty', !st.top.length);
+    const me = st.me; show('boardMe', !!me && !st.top.some((r) => r.me)); if (me) setN('boardMe', me.place);
+  }
+  function renderMine() {
+    const m = st && st.mine; if (!m || m.error) return;
+    best = Math.max(best, m.best || 0); game.setBest(best);
+    show('leftStart', true); setN('leftStart', m.left);
+    show('leftOver', true); setN('leftOver', m.left);
+    show('again', m.left > 0); show('noMore', m.left <= 0);
+    show('nickBox', !m.nickname && m.left > 0);
+    if (m.left <= 0) $('go').disabled = true;
+  }
+  function noOrder() { show('ovStart', false); show('ovNoOrder', true) }
+  async function load() {
+    try {
+      st = await api({ action: 'state', order: ORDER });
+      if (st.error) return;
+      if (ORDER && st.mine && st.mine.error === 'order') { noOrder(); return }
+      renderSeason(); renderBoard(); renderMine();
+      if (st.mine && st.mine.left <= 0) { $('startErr').textContent = $('noMoreMsg').textContent; show('startErr', true) }
+      else if (st.mine && !['OUT_FOR_DELIVERY', 'DELIVERED'].includes(st.mine.orderStatus)) {   // before the courier pressed «Еду»
+        $('startErr').textContent = MSG.not_yet; show('startErr', true); $('go').disabled = true;
+        setTimeout(load, 30e3);
+      } else $('go').disabled = st.mine ? st.mine.left <= 0 : $('go').disabled;
+    } catch (e) { /* the board is optional — the game still opens */ }
+  }
+
+  // ---- the game
+  const game = RyvokGame.mount($('stage'), {
+    onState(p) {
+      show('ovStart', false); show('ovNoOrder', false);
+      show('ovPause', p === 'paused');
+      if (p !== 'over') { show('ovOver', false); show('overMore', false) }
+    },
+    onEnd(r) {
+      show('ovOver', true);
+      window.__ryvokLast = r;
+      $('rScore').textContent = r.score;
+      ['rNew', 'rPending', 'rRejected', 'rNet', 'resend', 'rPlaceL', 'rPlace'].forEach((id) => show(id, false));
+      if (DEMO || !run) {
+        best = Math.max(best, r.score); $('rBest').textContent = best; show('rNew', r.isBest && r.score > 0);
+        setTimeout(() => show('overMore', true), 1100); return;
+      }
+      pending = { action: 'finish', run, jumps: r.jumps, score: r.score, pauses: r.pauses }; run = null;
+      Promise.all([send(), new Promise((ok) => setTimeout(ok, 1100))]).then(() => show('overMore', true));
+    },
+  });
+  async function send() {
+    if (!pending) return;
+    show('rNet', false); show('resend', false);
+    let j;
+    try { j = await api(pending) } catch (e) { j = { error: 'net' } }
+    if (j.error === 'net' || j.error === 'server') {   // keep the run, let the player resend; no new attempt yet
+      $('rBest').textContent = best; show('rNet', true); show('resend', true); show('again', false); show('noMore', false); return;
+    }
+    const prev = best; pending = null;
+    if (j.error || !j.ok) show('rRejected', true);
+    if (!j.error) {
+      st = { ...st, ...j }; renderMine(); renderBoard();
+      show('rNew', !!j.ok && j.score > prev);
+      show('rPending', !!j.ok && !!st.mine && !st.mine.counts);
+      const me = st.me; show('rPlaceL', !!me); show('rPlace', !!me); if (me) $('rPlace').textContent = me.place;
+    }
+    $('rBest').textContent = best;
+  }
+  $('resend').onclick = () => send().then(() => show('overMore', true));
+
+  async function begin(e) {
+    if (e) e.stopPropagation();
+    if (DEMO) { game.start(); return }
+    if (!ORDER) { noOrder(); return }
+    const btn = game.phase === 'over' ? $('again') : $('go');
+    if (btn.disabled) return;
+    show('startErr', false); btn.disabled = true;
+    let j;
+    try { j = await api({ action: 'start', order: ORDER, version: RyvokSim.VERSION, nickname: $('nick').value.trim() || null }) } catch (err) { j = { error: 'net' } }
+    btn.disabled = false;
+    if (!j.run) {
+      const msg = j.error === 'no_attempts' ? $('noMoreMsg').textContent : MSG[j.error] || MSG.net;
+      if (game.phase === 'over') { $('noMoreMsg').textContent = msg; show('noMore', true); show('again', j.error !== 'no_attempts') }
+      else { $('startErr').textContent = msg; show('startErr', true) }
+      if (j.error === 'no_attempts') $('go').disabled = true;
+      return;
+    }
+    run = j.run;
+    if (st && st.mine) st.mine.left = j.left;
+    setN('leftStart', j.left); setN('leftOver', j.left);
+    show('nickBox', false);
+    game.start(j.seed);
+  }
+  $('go').onclick = begin; $('again').onclick = begin;
+  $('cont').onclick = (e) => { e.stopPropagation(); game.resume() };
+  // Space / ↑ on the start or result screen starts a run (desktop) — not while typing the name
+  window.addEventListener('keydown', (e) => {
+    if (e.target && e.target.tagName === 'INPUT') return;
+    if ((e.code === 'Space' || e.key === 'ArrowUp') && !e.repeat) {
+      if ((game.phase === 'ready' && !$('ovStart').hidden) || (game.phase === 'over' && !$('overMore').hidden && !$('again').hidden)) { e.preventDefault(); begin() }
+      else if (game.phase === 'paused') { e.preventDefault(); game.resume() }
+    }
+  });
+  try { const p = JSON.parse(localStorage.getItem('pivka_profile') || '{}'); if (p.name) $('nick').value = String(p.name).trim().split(/\s+/)[0].slice(0, 16) } catch (e) {}
+  if (ORDER) { $('toOrder').href = '../../order.html?o=' + encodeURIComponent(ORDER); show('toOrder', true) }
+  if (DEMO) { show('proto', true) }
+  else if (!ORDER) noOrder();
+  if (!DEMO) load();
+  window.__ryvok = game;
+})();
+</script>
+</body></html>
