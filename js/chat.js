@@ -37,7 +37,7 @@
 .pchatForm{display:flex;gap:8px;align-items:flex-end;padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-top:1px solid #22282b;background:#111517}
 .pchatForm textarea{flex:1;resize:none;max-height:120px;min-height:42px;background:#0b0e10;border:1px solid #2f3639;color:#fff;border-radius:12px;padding:10px 12px;font:16px system-ui}
 .pchatForm button{height:42px;min-width:42px;border-radius:12px;border:0;font-size:18px;cursor:pointer}
-.pchatSend{background:#ffb51b;color:#171000;font-weight:900}.pchatPhoto{background:#1c2225;color:#fff}
+.pchatSend{background:#ffb51b;color:#171000;font-weight:900}.pchatPhoto{background:#1c2225;color:#fff;font-size:14px!important;font-weight:800;padding:0 10px;white-space:nowrap}
 .pchatForm button[disabled]{opacity:.5}`;
 
   function build() {
@@ -49,9 +49,9 @@
     const box = document.createElement('section');
     box.className = 'pchat'; box.id = 'pchat'; box.setAttribute('aria-label', 'Чат');
     box.innerHTML = '<div class="pchatHead"><b>Чат с «Пивка для рывка»</b><button type="button" aria-label="Закрыть">×</button></div>' +
-      '<div class="pchatList"><p class="pchatHint">Напишите вопрос — ответим здесь, в чате. Можно закрыть страницу: ответ сохранится.</p></div>' +
+      '<div class="pchatList"><p class="pchatHint"><span>Напишите вопрос — ответим здесь, в чате. Можно закрыть страницу: ответ сохранится.</span><br><br><span>Оплатили переводом? Нажмите «📷 Скриншот» и отправьте снимок перевода.</span></p></div>' +
       '<div class="pchatBlock" hidden></div>' +
-      '<form class="pchatForm"><input type="file" accept="image/*" hidden><button type="button" class="pchatPhoto" aria-label="Фото">📷</button>' +
+      '<form class="pchatForm"><input type="file" accept="image/*" hidden><button type="button" class="pchatPhoto" aria-label="Отправить скриншот перевода">📷 <span>Скриншот</span></button>' +
       '<textarea rows="1" maxlength="1000" placeholder="Сообщение…"></textarea><button type="submit" class="pchatSend" aria-label="Отправить">➤</button></form>';
     document.body.append(btn, box);
     box.querySelector('.pchatHead button').onclick = closeChat;
@@ -69,7 +69,7 @@
   function render() {
     const list = $('.pchatList'); if (!list) return;
     const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 80;
-    list.innerHTML = msgs.length ? '' : '<p class="pchatHint">Напишите вопрос — ответим здесь, в чате. Можно закрыть страницу: ответ сохранится.</p>';
+    list.innerHTML = msgs.length ? '' : '<p class="pchatHint"><span>Напишите вопрос — ответим здесь, в чате. Можно закрыть страницу: ответ сохранится.</span><br><br><span>Оплатили переводом? Нажмите «📷 Скриншот» и отправьте снимок перевода.</span></p>';
     for (const m of msgs) {
       const d = document.createElement('div');
       if (m.dir === 'SYS') {
@@ -77,7 +77,7 @@
         d.innerHTML = '<span>⛔ Сообщение не отправлено: в чате нельзя материться. Чат временно закрыт.</span>';
       } else {
         d.className = 'pm ' + (m.dir === 'IN' ? 'in' : 'out') + (m.pending ? ' pending' : '');
-        d.innerHTML = (m.image ? '<span>📷 Фото</span>' + (m.body ? '<br>' : '') : '') + esc(m.body || '') + '<time>' + (m.at ? hm(m.at) : '…') + '</time>';
+        d.innerHTML = (m.image ? '<span>📷 Скриншот</span>' + (m.body ? '<br>' : '') : '') + esc(m.body || '') + '<time>' + (m.at ? hm(m.at) : '…') + '</time>';
       }
       list.appendChild(d);
     }

@@ -623,7 +623,7 @@ async function onSupportIn(cfg: Cfg, messageId: number) {
   if (group) {
     try {
       const topic = await ensureTopic(cfg, group, t, o);
-      if (photo) await tg(cfg, "sendPhoto", { chat_id: group, message_thread_id: topic, photo, caption: m.body ? "👤 " + m.body : "👤 📷" });
+      if (photo) await tg(cfg, "sendPhoto", { chat_id: group, message_thread_id: topic, photo, caption: "👤 📷 Скриншот от клиента" + (m.body ? "\n" + m.body : "") });
       else await tg(cfg, "sendMessage", { chat_id: group, message_thread_id: topic, text: "👤 " + m.body });
       return 1;
     } catch (e) { console.error("support group", e); } // no topics / no rights → owner's chat below
@@ -634,7 +634,7 @@ async function onSupportIn(cfg: Cfg, messageId: number) {
   for (const l of await linksOf("OWNER")) {
     try {
       const r = photo
-        ? await tg(cfg, "sendPhoto", { chat_id: l.chat_id, photo, caption: (head + esc(m.body || "📷") + foot).slice(0, 1000), parse_mode: "HTML" })
+        ? await tg(cfg, "sendPhoto", { chat_id: l.chat_id, photo, caption: (head + "📷 Скриншот от клиента" + (m.body ? "\n" + esc(m.body) : "") + foot).slice(0, 1000), parse_mode: "HTML" })
         : await tg(cfg, "sendMessage", { chat_id: l.chat_id, text: head + esc(m.body) + foot, parse_mode: "HTML" });
       await db.from("support_tg").insert({ chat_id: l.chat_id, message_id: r.message_id, thread_id: t.id });
       sent++;

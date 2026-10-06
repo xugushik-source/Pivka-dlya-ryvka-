@@ -940,7 +940,7 @@ async function changeCity(id) {
     }
     const [links, zones] = await Promise.all([retry(() => PIVKA_DB.listPaymentLinks(id)), retry(() => PIVKA_DB.listDeliveryZones(id))]);
     // Bank transfer links (BOG / TBC) are shown only when the customer picks «Переводом».
-    paymentLinks.innerHTML = links.length ? '<div class="muted payhint">Переведите сумму «К оплате» по ссылке банка и отправьте скриншот в чат (кнопка 💬).</div>' + links.map(x => '<a class="yellow paylink" target="_blank" rel="noopener" href="' + esc(x.url) + '">💳 ' + esc(x.name) + '</a>').join('') : '<div class="muted">Перевод — по реквизитам, которые пришлём в WhatsApp.</div>';
+    paymentLinks.innerHTML = links.length ? '<div class="muted payhint">Переведите сумму «К оплате» по ссылке банка и отправьте скриншот в чат (кнопка 💬 → «📷 Скриншот»).</div>' + '<button type="button" class="yellow paylink" data-chat style="width:100%;border:0;cursor:pointer">📷 Отправить скриншот перевода</button>' + links.map(x => '<a class="yellow paylink" target="_blank" rel="noopener" href="' + esc(x.url) + '">💳 ' + esc(x.name) + '</a>').join('') : '<div class="muted">Перевод — по реквизитам, которые пришлём в WhatsApp.</div>';
     syncPaymentLinks();
     coZone.innerHTML = '<option value="">Выберите зону доставки</option>' + zones.map(z => '<option value="' + z.id + '" data-fee="' + Number(z.fee || 0) + '" data-min="' + Number(z.minimum_order || 0) + '">' + z.name + ' · ' + money(z.fee) + '</option>').join('');
     if (zones.length === 1) {
@@ -1112,7 +1112,7 @@ async function submitCheckout() {
     } catch (e) {}
     // The order has its own page (status, «Рывок» game, chat with us) — no WhatsApp, no phone number.
     const orderUrl = r.order_id ? new URL('order.html?o=' + r.order_id, location.href.split(/[?#]/)[0].replace(/[^/]*$/, '')).href : '';
-    checkoutBody.innerHTML = `<div class="success"><div class="big">🍻</div><h2>Рывок принят!</h2><p class="muted">Заказ №${r.order_number}<br>Сумма: ${money(r.total)}</p>${orderUrl ? `<a class="yellow checkout" style="display:block;text-decoration:none" href="${orderUrl}">Мой заказ и статус →</a><button type="button" class="skip" data-chat>💬 Вопрос по заказу? Напишите нам в чат</button>` : ''}<button class="skip" onclick="try{sessionStorage.setItem('pivka_intro_short','1')}catch(e){};location.reload()">Готово</button></div>`;
+    checkoutBody.innerHTML = `<div class="success"><div class="big">🍻</div><h2>Рывок принят!</h2><p class="muted">Заказ №${r.order_number}<br>Сумма: ${money(r.total)}</p>${orderUrl ? `<a class="yellow checkout" style="display:block;text-decoration:none" href="${orderUrl}">Мой заказ и статус →</a>${coPayment.value === 'transfer' ? '<button type="button" class="yellow checkout" data-chat style="display:block;width:100%;border:0;cursor:pointer">📷 Отправить скриншот перевода</button>' : ''}<button type="button" class="skip" data-chat>💬 Вопрос по заказу? Напишите нам в чат</button>` : ''}<button class="skip" onclick="try{sessionStorage.setItem('pivka_intro_short','1')}catch(e){};location.reload()">Готово</button></div>`;
     // The same status card as on the home page.
     checkoutBody.querySelector('.success').insertAdjacentHTML('beforeend', '<div id="orderTrack" class="trackCard" hidden></div>');
     document.querySelector('#todaySection #orderTrack')?.remove();
