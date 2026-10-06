@@ -174,7 +174,7 @@ function phoneOk(v) {
 // Order status for the customer. The browser keeps the id of the order it just placed (a random uuid) and asks the
 // database for its status — no phone, no login. Steps: Получен → Принят → Собран → (30 s) Едет → Доставлен / Отменён.
 const TRACK_KEY = 'pivka_last_order';
-const TRACK_KEEP_MS = 3 * 3600e3; // the card stays for 3 hours after the order is delivered or cancelled
+const TRACK_KEEP_MS = 15 * 60e3; // the card disappears 15 minutes after the order is delivered or cancelled
 // Someone who ordered in the last 12 hours comes back to see the status: skip the long intro credits.
 try {
   const o = JSON.parse(localStorage.getItem('pivka_last_order') || 'null');
@@ -226,6 +226,7 @@ async function refreshTrack() {
     if (end && new Date(o.now) - new Date(end) > TRACK_KEEP_MS) throw new Error('old');
     renderTrack(o);
     if (!['DELIVERED', 'CANCELLED', 'REFUNDED'].includes(o.status)) trackTimer = setTimeout(refreshTrack, 20e3);
+    else if (end) trackTimer = setTimeout(refreshTrack, Math.max(5e3, TRACK_KEEP_MS - (new Date(o.now) - new Date(end)) + 2e3)); // hides itself on an open page
     return true
   } catch (e) {
     if (e.message === 'gone' || e.message === 'old') {
