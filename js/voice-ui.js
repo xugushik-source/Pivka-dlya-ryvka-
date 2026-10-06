@@ -61,7 +61,7 @@
   function css() {
     const st = document.createElement('style');
     st.textContent = `
-.voiceCta{display:flex;align-items:center;gap:12px;width:100%;margin-top:10px;padding:12px 14px;border-radius:18px;border:2px solid #ffb51b;background:linear-gradient(135deg,#221a06,#15191b);color:#fff;text-align:left;cursor:pointer}
+.voiceCta[hidden]{display:none}.voiceCta{display:flex;align-items:center;gap:12px;width:100%;margin-top:10px;padding:12px 14px;border-radius:18px;border:2px solid #ffb51b;background:linear-gradient(135deg,#221a06,#15191b);color:#fff;text-align:left;cursor:pointer}
 .voiceCta .vmic{flex:0 0 46px;height:46px;border-radius:50%;display:grid;place-items:center;background:#ffb51b;color:#171000;font-size:22px;box-shadow:0 0 0 0 #ffb51b88;animation:vpulse 2.4s infinite}
 .voiceCta b{display:block;font-size:16px;font-weight:1000}.voiceCta small{display:block;color:#cfd3d6;font-size:13px;margin-top:2px}
 @keyframes vpulse{0%{box-shadow:0 0 0 0 #ffb51b77}70%{box-shadow:0 0 0 12px #ffb51b00}100%{box-shadow:0 0 0 0 #ffb51b00}}
@@ -92,6 +92,7 @@
     cta.type = 'button'; cta.className = 'voiceCta'; cta.id = 'voiceCta';
     cta.innerHTML = '<span class="vmic" aria-hidden="true">🎙</span><span><b id="vCtaT"></b><small id="vCtaS"></small></span>';
     cta.onclick = open;
+    cta.hidden = true; // shown only when the voice seller really works (see available())
     anchor.insertAdjacentElement('afterend', cta);
     const ov = document.createElement('div');
     ov.className = 'overlay'; ov.id = 'voiceOverlay';
@@ -205,6 +206,20 @@
     box.hidden = false; $('vAdd').hidden = false; $('vChange').hidden = false;
   }
 
+  // The button appears only when the server says the voice seller is ready (key set, daily limit not reached).
+  // Until the owner adds OPENAI_API_KEY customers see nothing — no half-working feature. ?voice=1 forces it for a test.
+  async function available() {
+    let force = false;
+    try { force = new URLSearchParams(location.search).get('voice') === '1' || sessionStorage.getItem('pivka_voice_force') === '1'; if (force) sessionStorage.setItem('pivka_voice_force', '1') } catch (e) {}
+    if (force) return true;
+    if (!window.RTCPeerConnection || !navigator.mediaDevices) return false;
+    try {
+      const url = PIVKA_CONFIG.supabaseUrl.replace(/\/$/, '') + '/functions/v1/voice-session';
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: PIVKA_CONFIG.supabaseAnonKey }, body: JSON.stringify({ check: true, lang: L() }) });
+      return r.ok;
+    } catch (e) { return false }
+  }
+
   function init() {
     if (!window.PivkaVoiceAgent || !window.PivkaVoiceTools || !build()) return;
     css();
@@ -218,6 +233,7 @@
       if (ev.type === 'checkout') { PivkaVoiceAgent.stop('checkout'); if (typeof closeSheet === 'function') closeSheet('voiceOverlay') }
     });
     texts();
+    available().then((yes) => { if (yes) $('voiceCta').hidden = false });
     // follow the site language switch
     new MutationObserver(texts).observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] });
   }
