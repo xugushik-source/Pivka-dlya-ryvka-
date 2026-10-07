@@ -71,6 +71,13 @@ function renderHoursNote() {
   el.hidden = !text;
   el.textContent = text ? tr(text) : ''
 }
+// «⏱ ~15 мин» next to a dish (products.prep_minutes); lahmajo also says how many go into one oven load.
+function prepLabel(p) {
+  const [m, b] = PREP[p.id] || [];
+  if (!m) return '';
+  const t = tr('⏱ Готовим ~{n} мин').replace('{n}', m) + (Number(b) > 2 ? ' · ' + tr('до {b} шт за заход').replace('{b}', b) : '');
+  return '<div class="prep">' + esc(t) + '</div>'
+}
 // Minutes the kitchen needs for these lines: one batch per kind (lahmajo: per 5 pieces), kinds one after another.
 function foodMinutes(lines) {
   const g = new Map();
@@ -1228,7 +1235,7 @@ function renderProducts(filter = currentCat) {
   products.innerHTML = rows.length ? rows.map((p, n) => {
     const lim = p.unit === 'liter' ? 'Минимум ' + Number(p.minimum_quantity || 2) + ' л · шаг 2 л' : ALCOHOL.includes(slugOf(p)) ? '18+' : '',
       inCart = cart[p.id]?.qty;
-    return `<div class="product" style="--i:${Math.min(n,8)}"><div class="thumb">${p.image_url?'<img src="'+esc(p.image_url)+'" alt="'+esc(pname(p))+'" loading="lazy" decoding="async" data-fallback="'+icon(p)+'" onerror="this.parentNode.textContent=this.dataset.fallback">':icon(p)}</div><div class="pinfo"><h3>${esc(pname(p))} ${p.top_pick?'<span class="tag">ТОП</span>':''}</h3>${lim?'<div class="lim">'+lim+'</div>':''}<div class="p">${p.unit==='liter'?money(p.sale_price)+' за 1 л':money(p.sale_price)}</div><div class="stock">${inCart?'В корзине: '+inCart+(p.unit==='liter'?unitL():''):'В наличии'}</div></div><button type="button" class="plus" data-id="${p.id}" aria-label="Добавить">+</button></div>`
+    return `<div class="product" style="--i:${Math.min(n,8)}"><div class="thumb">${p.image_url?'<img src="'+esc(p.image_url)+'" alt="'+esc(pname(p))+'" loading="lazy" decoding="async" data-fallback="'+icon(p)+'" onerror="this.parentNode.textContent=this.dataset.fallback">':icon(p)}</div><div class="pinfo"><h3>${esc(pname(p))} ${p.top_pick?'<span class="tag">ТОП</span>':''}</h3>${lim?'<div class="lim">'+lim+'</div>':''}<div class="p">${p.unit==='liter'?money(p.sale_price)+' за 1 л':money(p.sale_price)}</div><div class="stock">${inCart?'В корзине: '+inCart+(p.unit==='liter'?unitL():''):'В наличии'}</div>${prepLabel(p)}</div><button type="button" class="plus" data-id="${p.id}" aria-label="Добавить">+</button></div>`
   }).join('') : '<div class="empty">' + (upsellReturn ? 'Всё из этого раздела уже в корзине' : 'В этой категории пока пусто') + '</div>';
   if (!reducedMotion) {
     void products.offsetWidth;

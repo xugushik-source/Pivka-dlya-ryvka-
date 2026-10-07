@@ -46,7 +46,7 @@ const TG_DATA = new URLSearchParams(location.hash.slice(1)).get('tgWebAppData');
 const MODE = TG_DATA ? 'tg' : qs.get('staff') ? 'staff' : 'customer';
 const FN_URL = PIVKA_CONFIG.supabaseUrl + '/functions/v1/telegram';
 const sb = window.supabase.createClient(PIVKA_CONFIG.supabaseUrl, PIVKA_CONFIG.supabaseAnonKey);
-let view = null, lines = [], keepBundle = true, catalog = null, busy = false, charge = null;
+let view = null, lines = [], keepBundle = true, catalog = null, busy = false, charge = null, swaps = {}, swapFor = null;
 
 const $ = id => document.getElementById(id);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -81,8 +81,30 @@ async function load() {
     return
   }
   lines = view.items.map(i => ({ ...i, qty: Number(i.qty), orig: Number(i.qty), min: Number(i.min), step: Number(i.step), price: Number(i.price) }));
-  keepBundle = true;
+  keepBundle = true; swaps = {}; swapFor = null;
   render()
+}
+
+// «Рывок» line replaced (out of stock): the new line keeps the рывок's discount — its price against the old product's
+// own price — so dearer means a surcharge and cheaper a lower total (the server computes the same).
+function swapLine(i) {
+  const sw = swaps[i.product_id];
+  if (!sw) return null;
+  const old = catalog && catalog.find(p => p.id === i.product_id);
+  const factor = old && Number(old.sale_price) > 0 ? Number(i.line_total) / (Number(old.sale_price) * Number(i.qty)) : 1;
+  const total = Math.round(Number(sw.p.sale_price) * sw.qty * factor * 100) / 100;
+  return { ...sw, total, diff: total - Number(i.line_total) }
+}
+const bundleTotal = () => !view.bundle ? 0 : Number(view.bundle.total) + view.bundle.items.reduce((s, i) => s + (swapLine(i)?.diff || 0), 0);
+function bundleItemHtml(i) {
+  const canSwap = keepBundle && i.product_id;
+  const sw = swapLine(i);
+  const signed = d => (d > 0 ? '+' : d < 0 ? '−' : '') + money(Math.abs(d));
+  return '<div class="line"><div class="nm">' + (sw
+      ? '<s>' + esc(i.name) + '</s> → <b>' + esc(sw.p.name) + '</b> × ' + unitTxt(sw.qty, sw.p.unit) + '<small>' + (sw.diff ? signed(sw.diff) : 'та же цена') + ' · скидка рывка сохраняется</small>'
+      : esc(i.name) + ' × ' + unitTxt(i.qty, i.unit)) + '</div>' +
+    (canSwap ? (sw ? '<button class="mini" onclick="unswap(\'' + i.product_id + '\')">Отменить</button>'
+                   : '<button class="mini" onclick="openSwap(\'' + i.product_id + '\')">🔄 Заменить</button>') : '') + '</div>'
 }
 
 const staffView = () => view.role !== 'CUSTOMER';
@@ -125,9 +147,8 @@ function render() {
     h += '<div class="card"><div class="ghead"><b>🔥 Рывок</b>' + (keepBundle
       ? '<button class="mini" onclick="setBundle(false)">✕ Убрать рывок</button>'
       : '<button class="mini" onclick="setBundle(true)">Вернуть рывок</button>') + '</div>' +
-      '<div class="muted"' + (keepBundle ? '' : ' style="text-decoration:line-through"') + '>' +
-      view.bundle.items.map(i => esc(i.name) + ' × ' + unitTxt(i.qty, i.unit)).join(', ') + ' · ' + money(view.bundle.total) + '</div>' +
-      '<div class="muted" style="margin-top:4px">Рывок меняется только целиком</div></div>'
+      '<div' + (keepBundle ? '' : ' class="muted" style="text-decoration:line-through"') + '>' + view.bundle.items.map(bundleItemHtml).join('') + '</div>' +
+      '<div class="muted" style="margin-top:4px">Рывок: ' + money(bundleTotal()) + (keepBundle ? ' · нет товара — «🔄 Заменить»' : '') + '</div><div id="swapBox"></div></div>'
   }
   if (staffView()) {
     // Grouped by supplier, so the courier sees whose part he changes.
@@ -145,7 +166,7 @@ function render() {
   h += '<button class="ghost" onclick="openAdd()">+ Добавить товар</button><div id="add"></div>' + backLink();
   $('box').innerHTML = h;
   $('bar').hidden = false;
-  const goods = (keepBundle && view.bundle ? Number(view.bundle.total) : 0) + lines.reduce((s, l) => s + l.price * Math.max(l.qty, 0), 0);
+  const goods = (keepBundle && view.bundle ? bundleTotal() : 0) + lines.reduce((s, l) => s + l.price * Math.max(l.qty, 0), 0);
   $('sum').textContent = money(goods + Number(view.delivery_fee || 0));
   const wo = writeoffSum();
   $('writeoff').hidden = !wo;
@@ -164,22 +185,54 @@ function backLink() {
 function setQty(k, q) { lines[k].qty = q; render() }
 function inc(k) { const l = lines[k]; l.qty = l.qty <= 0 ? l.min : l.qty + l.step; render() }
 function dec(k) { const l = lines[k]; l.qty = l.qty - l.step < l.min ? 0 : l.qty - l.step; render() }
-function setBundle(v) { keepBundle = v; render() }
+function setBundle(v) { keepBundle = v; if (!v) swaps = {}; render() }
+function unswap(id) { delete swaps[id]; render() }
+async function loadCatalog() {
+  if (catalog) return;
+  const r = await sb.rpc('city_catalog', { p_city: view.city_id });
+  catalog = r.error ? [] : r.data || [];
+  // Night prices (00:00–08:00): an item added now is charged the night price, show the same.
+  const n = await sb.rpc('night_pricing');
+  if (!n.error && n.data?.active) {
+    const st = Number(n.data.step || 0.5), k = 1 + Number(n.data.percent) / 100;
+    catalog.forEach(p => { if (Number(p.sale_price) > 0) p.sale_price = Math.ceil(Math.round(p.sale_price * k / st * 1e6) / 1e6) * st })
+  }
+}
+async function openSwap(id) {
+  swapFor = id;
+  await loadCatalog();
+  const i = view.bundle.items.find(x => x.product_id === id);
+  const cat = catalog.find(p => p.id === id)?.category_id || i?.category_id;
+  // Same section first (beer for beer, vodka for vodka), then everything else.
+  const list = catalog.filter(p => p.id !== id).sort((a, b) => (b.category_id === cat) - (a.category_id === cat));
+  $('swapBox').innerHTML = '<div class="muted" style="margin-top:8px">Чем заменить «' + esc(i.name) + '»?</div>' +
+    '<input id="swapSearch" placeholder="Найти товар" oninput="renderSwap()" autocomplete="off"><div id="swapList" class="card"></div>';
+  swapList_ = list;
+  renderSwap();
+  $('swapBox').scrollIntoView({ block: 'nearest' })
+}
+let swapList_ = [];
+function renderSwap() {
+  const q = ($('swapSearch')?.value || '').trim().toLowerCase();
+  const list = swapList_.filter(p => !q || String(p.name).toLowerCase().includes(q)).slice(0, 30);
+  $('swapList').innerHTML = list.length ? list.map(p => '<div class="line"><div class="nm">' + esc(p.name) + '<small>' + money(p.sale_price) +
+    (p.unit === 'liter' ? ' за 1 л' : '') + '</small></div><button class="mini" onclick="pickSwap(\'' + p.id + '\')">Выбрать</button></div>').join('')
+    : '<div class="muted">Ничего не нашлось</div>'
+}
+function pickSwap(pid) {
+  const i = view.bundle.items.find(x => x.product_id === swapFor);
+  const p = catalog.find(x => x.id === pid);
+  const qty = p.unit === i.unit ? Number(i.qty) : Number(p.minimum_quantity || 1);
+  swaps[swapFor] = { p, qty };
+  swapFor = null;
+  render()
+}
 function clearGroup(g) { lines.forEach(l => { if ((l.supplier || 'Без поставщика') === g) l.qty = 0 }); render() }
 
 async function openAdd() {
   const box = $('add');
   box.innerHTML = '<input id="search" placeholder="Найти товар" oninput="renderAdd()" autocomplete="off"><div id="addList" class="card"><div class="muted">Загрузка…</div></div>';
-  if (!catalog) {
-    const r = await sb.rpc('city_catalog', { p_city: view.city_id });
-    catalog = r.error ? [] : r.data || [];
-    // Night prices (00:00–08:00): an item added now is charged the night price, show the same.
-    const n = await sb.rpc('night_pricing');
-    if (!n.error && n.data?.active) {
-      const st = Number(n.data.step || 0.5), k = 1 + Number(n.data.percent) / 100;
-      catalog.forEach(p => { if (Number(p.sale_price) > 0) p.sale_price = Math.ceil(Math.round(p.sale_price * k / st * 1e6) / 1e6) * st })
-    }
-  }
+  await loadCatalog();
   renderAdd();
   $('search').focus()
 }
@@ -201,7 +254,8 @@ function addProduct(id) {
 
 async function save(chosen) {
   if (busy) return;
-  const items = lines.filter(l => l.qty > 0).map(l => ({ product_id: l.product_id, quantity: l.qty }));
+  const items = lines.filter(l => l.qty > 0).map(l => ({ product_id: l.product_id, quantity: l.qty }))
+    .concat(keepBundle ? Object.entries(swaps).map(([from, sw]) => ({ swap_from: from, product_id: sw.p.id, quantity: sw.qty })) : []);
   const wo = writeoffSum();
   if (wo && view.role === 'DRIVER' && !confirm('Пиво уже разлито. Убрать — ' + money(wo) + ' запишется на вас. Подтвердить?')) return;
   if (wo && view.role === 'ADMIN' && view.driver && !chosen) {
@@ -216,7 +270,7 @@ async function save(chosen) {
   try {
     const r = await api(items);
     view = r; lines = view.items.map(i => ({ ...i, qty: Number(i.qty), orig: Number(i.qty), min: Number(i.min), step: Number(i.step), price: Number(i.price) }));
-    keepBundle = true; busy = false; render();
+    keepBundle = true; swaps = {}; busy = false; render();
     $('box').insertAdjacentHTML('afterbegin', '<div class="card ok"><span>' + (r.changed ? 'Сохранено.' : 'Ничего не изменилось.') + '</span> <span>Сумма: ' + money(r.total) + '</span></div>');
     window.scrollTo(0, 0)
   } catch (e) {
@@ -240,7 +294,7 @@ if (MODE === 'tg') {
 // The customer sees the page in their language (same translations as the store).
 window.setLang = l => { document.documentElement.lang = l };
 </script>
-<script src="./js/i18n.js?v=20261007l"></script><script src="./js/chat.js?v=20261007b"></script>
+<script src="./js/i18n.js?v=20261007m"></script><script src="./js/chat.js?v=20261007b"></script>
 <script>
 if (MODE === 'customer') {
   let l = 'ru';
