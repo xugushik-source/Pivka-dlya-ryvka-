@@ -247,8 +247,8 @@ async function onRemind(cfg: Cfg, orderId: string) {
 // ---------- Suppliers: only their own lines, at purchase price, no customer data.
 
 // One order = one trip: everything is picked up together when the hot food is ready.
-// products.prep_minutes / prep_batch: pizza and khachapuri 15 min; lahmajo 10 min per 5 pieces (6–10 → 20 min).
-// One oven: different kinds are baked one after another, so their times add up.
+// products.prep_minutes / prep_batch = Мндо's oven: one oven, a ~15 min load holds 2 pizzas/khachapuri OR 5 lahmajo;
+// loads go one after another (2 pizzas + 2 lahmajo = 30 min). Every supplier of the order is told the same, longest time.
 const basePrep = (o: any) => o.fulfillment_type === "delivery" ? 5 : 10;
 function foodMinutes(items: any[]) {
   const g = new Map<string, { prep: number; batch: number; q: number }>();
@@ -696,7 +696,7 @@ async function onSupportOwnerMessage(cfg: Cfg, m: any) {
   let threadId: string | null = null;
   if (group) {
     const g = await supportGroup();
-    if (!g || m.chat.id !== g) return true;            // some other group: ignore
+    if (!g || m.chat.id !== g) return false;           // another group (a supplier's): may be its «не сходится» note
     if (!m.message_thread_id || !m.is_topic_message) return true; // the general topic: not a customer
     const { data } = await db.from("support_threads").select("id").eq("tg_chat", m.chat.id).eq("tg_topic", m.message_thread_id).maybeSingle();
     threadId = data?.id || null;
@@ -738,7 +738,8 @@ async function onStart(cfg: Cfg, m: any) {
     return;
   }
   const group = m.chat.type === "group" || m.chat.type === "supergroup";
-  if ((link.kind === "SUPPORT") !== group) {
+  // A supplier may link a private chat or a group (several people of one supplier see the orders and press «Готово»).
+  if (link.kind !== "SUPPLIER" && (link.kind === "SUPPORT") !== group) {
     await tg(cfg, "sendMessage", { chat_id: m.chat.id, text: link.kind === "SUPPORT" ? "Эта ссылка — для группы чатов с клиентами." : "Эта ссылка — для личного чата с ботом." });
     return;
   }
@@ -831,7 +832,7 @@ async function onUpdate(cfg: Cfg, u: any) {
   if (!m?.chat?.id) return;
   if (m.text && /^\/start/.test(m.text)) return onStart(cfg, m);
   if (await onSupportOwnerMessage(cfg, m)) return;   // chat with a customer
-  if (m.text && m.chat.type === "private") return onText(cfg, m);
+  if (m.text && ["private", "group", "supergroup"].includes(m.chat.type)) return onText(cfg, m); // supplier's «не сходится» note
 }
 
 // ---------- Order edit page inside Telegram (Mini App)
