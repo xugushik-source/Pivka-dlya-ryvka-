@@ -738,7 +738,8 @@ async function onStart(cfg: Cfg, m: any) {
     return;
   }
   const group = m.chat.type === "group" || m.chat.type === "supergroup";
-  if ((link.kind === "SUPPORT") !== group) {
+  // A supplier may link a private chat or a group (several people of one supplier see the orders and press «Готово»).
+  if (link.kind !== "SUPPLIER" && (link.kind === "SUPPORT") !== group) {
     await tg(cfg, "sendMessage", { chat_id: m.chat.id, text: link.kind === "SUPPORT" ? "Эта ссылка — для группы чатов с клиентами." : "Эта ссылка — для личного чата с ботом." });
     return;
   }
