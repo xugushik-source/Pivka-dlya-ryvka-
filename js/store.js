@@ -48,7 +48,18 @@ const hm2min = t => { const [h, m] = String(t).split(':'); return +h * 60 + +m }
 function tbilisiMin() {
   try { return hm2min(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tbilisi', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date())) } catch (e) { const d = new Date(); return d.getHours() * 60 + d.getMinutes() }
 }
+// Night (23:00–11:00): the night assortment is sold from the owner's stock — «осталось N», gone when 0.
+const STOCK = {};
+const stockNight = () => { const m = tbilisiMin(); return m < 11 * 60 || m >= 23 * 60 };
+const stockLeft = p => stockNight() && STOCK[p.id] != null ? STOCK[p.id] : null;
+async function loadStock() {
+  try {
+    const r = await PIVKA_DB.client().rpc('night_stock');
+    if (!r.error) (r.data || []).forEach(x => STOCK[x.product_id] = Number(x.left_qty))
+  } catch (e) {}
+}
 function openNow(p) {
+  if (stockLeft(p) !== null && stockLeft(p) <= 0) return false;
   const h = HOURS[p.id];
   if (!h || !h[0] || !h[1]) return true;
   const m = tbilisiMin(), f = hm2min(h[0]), u = hm2min(h[1]);
@@ -93,6 +104,7 @@ function foodMinutes(lines) {
   return t
 }
 setInterval(async () => {
+  if (stockNight()) await loadStock();
   if (!catalogAll.length || catalogAll.filter(openNow).map(p => p.id).join() === hoursKey) return;
   setCatalog(catalogAll);
   try { bundleCatalog = await PIVKA_DB.listBundles(localStorage.getItem('pivka_city')) } catch (e) {}
@@ -503,6 +515,11 @@ function pickQty(el, q) {
 
 function add(p, q = 1, opts = {}) {
   if (p.unit === 'liter') q = Math.max(2, Math.floor(Number(q) / 2) * 2);
+  const left = stockLeft(p);
+  if (left !== null && (cart[p.id]?.qty || 0) + q > left) {
+    q = left - (cart[p.id]?.qty || 0);
+    if (q <= 0) { alert(tr('На складе осталось только {n}').replace('{n}', left)); return }
+  }
   if (cart[p.id]) cart[p.id].qty += q;
   else cart[p.id] = { p, qty: q };
   const via = opts.boost ? 'gift_boost' : upsellReturn ? 'upsell' : 'catalog';
@@ -809,6 +826,8 @@ function addAddon(id) {
 function change(id, d) {
   const x = cart[id];
   if (!x) return;
+  const left = stockLeft(x.p);
+  if (d > 0 && left !== null && x.qty + d > left) { alert(tr('На складе осталось только {n}').replace('{n}', left)); return }
   x.qty += d * (x.p.unit === 'liter' ? 2 : 1);
   if (x.p.unit === 'liter' && x.qty > 0 && x.qty < 2) x.qty = 2;
   if (x.qty <= 0) delete cart[id];
@@ -1235,7 +1254,7 @@ function renderProducts(filter = currentCat) {
   products.innerHTML = rows.length ? rows.map((p, n) => {
     const lim = p.unit === 'liter' ? 'Минимум ' + Number(p.minimum_quantity || 2) + ' л · шаг 2 л' : ALCOHOL.includes(slugOf(p)) ? '18+' : '',
       inCart = cart[p.id]?.qty;
-    return `<div class="product" style="--i:${Math.min(n,8)}"><div class="thumb">${p.image_url?'<img src="'+esc(p.image_url)+'" alt="'+esc(pname(p))+'" loading="lazy" decoding="async" data-fallback="'+icon(p)+'" onerror="this.parentNode.textContent=this.dataset.fallback">':icon(p)}</div><div class="pinfo"><h3>${esc(pname(p))} ${p.top_pick?'<span class="tag">ТОП</span>':''}</h3>${lim?'<div class="lim">'+lim+'</div>':''}<div class="p">${p.unit==='liter'?money(p.sale_price)+' за 1 л':money(p.sale_price)}</div><div class="stock">${inCart?'В корзине: '+inCart+(p.unit==='liter'?unitL():''):'В наличии'}</div>${prepLabel(p)}</div><button type="button" class="plus" data-id="${p.id}" aria-label="Добавить">+</button></div>`
+    return `<div class="product" style="--i:${Math.min(n,8)}"><div class="thumb">${p.image_url?'<img src="'+esc(p.image_url)+'" alt="'+esc(pname(p))+'" loading="lazy" decoding="async" data-fallback="'+icon(p)+'" onerror="this.parentNode.textContent=this.dataset.fallback">':icon(p)}</div><div class="pinfo"><h3>${esc(pname(p))} ${p.top_pick?'<span class="tag">ТОП</span>':''}</h3>${lim?'<div class="lim">'+lim+'</div>':''}<div class="p">${p.unit==='liter'?money(p.sale_price)+' за 1 л':money(p.sale_price)}</div><div class="stock">${inCart?'В корзине: '+inCart+(p.unit==='liter'?unitL():''):stockLeft(p)!==null?tr('Осталось: {n}').replace('{n}',stockLeft(p)):'В наличии'}</div>${prepLabel(p)}</div><button type="button" class="plus" data-id="${p.id}" aria-label="Добавить">+</button></div>`
   }).join('') : '<div class="empty">' + (upsellReturn ? 'Всё из этого раздела уже в корзине' : 'В этой категории пока пусто') + '</div>';
   if (!reducedMotion) {
     void products.offsetWidth;
@@ -1302,6 +1321,7 @@ observeNav();
   try {
     [catalog, bundleCatalog, giftTiers, upsellRules, cities, categoryRows] = await Promise.all([retry(() => PIVKA_DB.listCatalog()), PIVKA_DB.listBundles(localStorage.getItem('pivka_city')).catch(() => []), PIVKA_DB.listGiftTiers().catch(() => []), PIVKA_DB.listUpsellRules().catch(() => []), retry(() => PIVKA_DB.listCities()), PIVKA_DB.listCategories().catch(() => [])]);
     giftTiers = groupGiftTiers(giftTiers);
+    await loadStock();
     categoryRows.forEach(c => catById[c.id] = c);
     catalog.forEach(p => {
       if (p.name_i18n) nameI18n[p.id] = p.name_i18n;
