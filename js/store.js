@@ -146,6 +146,26 @@ function plural(n, forms) {
 function countLabel(slug, n) {
   return slug === 'draft' ? plural(n, ['сорт', 'сорта', 'сортов', 'სახეობა', 'տեսակ']) : plural(n, ['позиция', 'позиции', 'позиций', 'პროდუქტი', 'ապրանք'])
 }
+// Where this visit came from (admin «Аналитика» → «Откуда»):
+//   qr / qr:<spot> — the poster QR (/qr/ teaser → ?from=qr); friend — «Подлови друга»; link:<name> — a link we send (?s=tg, ?s=wa, ?s=ig…);
+//   google / instagram / facebook / telegram / whatsapp / <site> — by referrer; direct — typed, saved or an app that hides the referrer.
+function visitSource() {
+  try { const s = sessionStorage.getItem('pivka_src'); if (s) return s } catch (e) {}
+  const q = new URLSearchParams(location.search), c = campaignInfo()?.last || {};
+  const clean = x => String(x || '').toLowerCase().replace(/[^\w.-]/g, '').slice(0, 30);
+  let src = '';
+  if (q.get('from') === 'qr') src = c.utm_source === 'friend' ? 'friend' : 'qr' + (c.spot ? ':' + clean(c.spot) : '');
+  else if (q.get('s')) src = 'link:' + clean(q.get('s'));
+  else if (q.get('utm_source')) src = clean(q.get('utm_source'));
+  else {
+    let h = '';
+    try { h = document.referrer ? new URL(document.referrer).hostname : '' } catch (e) {}
+    if (h && h !== location.hostname) src = /google\./.test(h) ? 'google' : /instagram/.test(h) ? 'instagram' : /facebook|fb\./.test(h) ? 'facebook' : /t\.me|telegram/.test(h) ? 'telegram' : /whatsapp|wa\.me/.test(h) ? 'whatsapp' : clean(h);
+  }
+  src = src || 'direct';
+  try { sessionStorage.setItem('pivka_src', src); if (!localStorage.getItem('pivka_src_first')) localStorage.setItem('pivka_src_first', src) } catch (e) {}
+  return src
+}
 function track(event, extra = {}) {
   try { PIVKA_DB.trackEvent(event, extra) } catch (e) {}
 }
@@ -1203,7 +1223,7 @@ async function submitCheckout() {
     let r;
     if (checkoutBundle) r = await PIVKA_DB.createBundleOrder(payload);
     else r = await PIVKA_DB.createOrder(payload);
-    track('order_complete', { bundleId: checkoutBundle?.id || null, metadata: { order_number: r.order_number, total: Number(r.total), campaign: campaignInfo() } });
+    track('order_complete', { bundleId: checkoutBundle?.id || null, metadata: { order_number: r.order_number, total: Number(r.total), campaign: campaignInfo(), src: visitSource() } });
     try {
       if (r.order_id) localStorage.setItem(TRACK_KEY, JSON.stringify({ id: r.order_id, n: r.order_number, at: Date.now() }))
     } catch (e) {}
@@ -1317,7 +1337,7 @@ coPhone.addEventListener('change', refreshDeliveryQuote);
 document.addEventListener('pivka:intro-done', () => track('splash_complete'), { once: true });
 observeNav();
 (async () => {
-  track('page_view', { metadata: { lang: lang(), ref: document.referrer ? new URL(document.referrer).hostname : '' } });
+  track('page_view', { metadata: { lang: lang(), ref: document.referrer ? new URL(document.referrer).hostname : '', src: visitSource() } });
   try {
     [catalog, bundleCatalog, giftTiers, upsellRules, cities, categoryRows] = await Promise.all([retry(() => PIVKA_DB.listCatalog()), PIVKA_DB.listBundles(localStorage.getItem('pivka_city')).catch(() => []), PIVKA_DB.listGiftTiers().catch(() => []), PIVKA_DB.listUpsellRules().catch(() => []), retry(() => PIVKA_DB.listCities()), PIVKA_DB.listCategories().catch(() => [])]);
     giftTiers = groupGiftTiers(giftTiers);
