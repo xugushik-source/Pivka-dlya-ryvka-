@@ -1310,6 +1310,9 @@ observeNav();
     });
     setCatalog(catalog);
     citySelect.innerHTML = cities.map(c => '<option value="' + c.id + '">' + c.name + '</option>').join('');
+    // Cities that are not open yet: shown greyed out with a note («скоро»), not selectable.
+    PIVKA_DB.listSoonCities().then(soon => soon.forEach(c => citySelect.insertAdjacentHTML('beforeend',
+      '<option disabled>' + esc(c.name + ' — ' + tr(c.note || 'скоро')) + '</option>')));
     const savedCity = localStorage.getItem('pivka_city');
     currentCity = cities.find(c => c.id === savedCity) || cities[0] || null;
     if (currentCity) {
