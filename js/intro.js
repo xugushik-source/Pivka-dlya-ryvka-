@@ -77,7 +77,11 @@
     frameNo = i;
     const frames = t().frames;
     if (!running) return;
-    if (i >= frames.length) { reveal(); return }
+    if (i >= frames.length) {
+      // The song plays to its last chord; the store opens right after it (or at once without sound).
+      if (audio && !audio.paused && audio.duration) { frameTimer = setTimeout(reveal, Math.max(0, (audio.duration - audio.currentTime) * 1000)); return }
+      reveal(); return
+    }
     showFrame(i);
     frameTimer = setTimeout(() => playFrom(i + 1), frames[i][1]);
   }
@@ -87,7 +91,34 @@
     const bar = intro.querySelector('.brand-intro__progress i');
     if (bar) { bar.style.animation = 'none'; void bar.offsetWidth; bar.style.animation = '' }
   }
+  // «🔊 Со звуком»: «Чакруло» (Georgian table song, 1957) only on the curtain. Browsers play sound only after a tap,
+  // so it is the visitor's choice; it fades out when the store opens.
+  const soundBtn = document.getElementById('introSound');
+  const SOUND_TXT = { ru: ['🔊 Со звуком', '🔇 Выключить'], ka: ['🔊 ხმით', '🔇 გამორთვა'], hy: ['🔊 Ձայնով', '🔇 Անջատել'] };
+  let audio = null;
+  function soundLabel() {
+    if (!soundBtn) return;
+    const on = !!audio && !audio.paused, l = SOUND_TXT[root.lang] || SOUND_TXT.ru;
+    soundBtn.textContent = on ? l[1] : l[0];
+    soundBtn.setAttribute('aria-pressed', on ? 'true' : 'false')
+  }
+  function soundOff() {
+    if (!audio || audio.paused) return;
+    const a = audio, v = a.volume;
+    let k = 0;
+    const id = setInterval(() => { a.volume = Math.max(0, v * (1 - ++k / 12)); if (k >= 12) { clearInterval(id); a.pause(); soundLabel() } }, 60)
+  }
+  if (soundBtn) soundBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    if (audio && !audio.paused) { audio.pause(); soundLabel(); return }
+    if (!audio) { audio = new Audio('assets/sound/chakrulo.mp3'); audio.addEventListener('ended', soundLabel) }
+    audio.volume = .75;
+    if (audio.ended) audio.currentTime = 0;
+    audio.play().then(soundLabel).catch(soundLabel);
+    soundLabel()
+  });
   function update() {
+    soundLabel();
     const c = t();
     order.textContent = c.cta;
     hint.textContent = c.hint;
@@ -145,6 +176,7 @@
     clearTimeout(holdTimer);
     clearTimeout(frameTimer);
     intro.classList.add('is-revealing');
+    soundOff();
     store.classList.add('enter');
     store.classList.remove('pre-enter');
     setTimeout(done, REVEAL_MS);

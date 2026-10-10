@@ -84,3 +84,8 @@ html.intro-short .brand-intro .mask>span,html.intro-short .brand-intro .stage{an
 .intro-night{margin:0 0 8px;padding:7px 12px;border-radius:12px;background:#1d234099;color:#d6dcff;text-align:center;font-size:13px;font-weight:800}
 .brand-intro__cta{width:100%}
 @media(prefers-reduced-motion:reduce){.credit{transition:opacity .2s}.credit.in,.credit.out{transform:translate3d(0,-50%,0)}}
+
+/* «🔊 Со звуком» — the song plays only if the visitor taps it */
+.intro-sound{display:block;margin:12px auto 0;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.22);color:#fff;border-radius:999px;padding:8px 16px;font:700 13px/1 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.02em;cursor:pointer;position:relative;z-index:2}
+.intro-sound[aria-pressed="true"]{background:rgba(255,181,27,.18);border-color:#ffb51b;color:#ffd15b}
+.intro-short .intro-sound{display:none}
