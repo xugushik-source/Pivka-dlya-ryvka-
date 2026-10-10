@@ -544,6 +544,7 @@ function add(p, q = 1, opts = {}) {
   else cart[p.id] = { p, qty: q };
   const via = opts.boost ? 'gift_boost' : upsellReturn ? 'upsell' : 'catalog';
   track('add_to_cart', { productId: p.id, metadata: { qty: q, via } });
+  if (window.pivkaSound) pivkaSound('add');
   if (via !== 'catalog') track('upsell_add', { productId: p.id, metadata: { via, category: slugOf(p) } });
   renderCart();
   bumpCart();
@@ -778,16 +779,27 @@ function renderGift(total) {
   const next = giftTiers.find(x => total < Number(x.threshold)),
     won = [...giftTiers].reverse().find(x => total >= Number(x.threshold)),
     wonAt = won ? Number(won.threshold) : 0;
-  if (giftLastWon !== null && wonAt > giftLastWon) track('gift_reached', { metadata: { threshold: wonAt, total } });
+  if (giftLastWon !== null && wonAt > giftLastWon) {
+    track('gift_reached', { metadata: { threshold: wonAt, total } });
+    setTimeout(() => window.pivkaGiftWon && pivkaGiftWon(), 60)
+  }
   giftLastWon = wonAt;
-  let text, width;
+  let text, width, hot = false;
   if (next) {
     const rem = money(Number(next.threshold) - total);
-    text = won ? '🎁 ' + pname(won.products) + ' открыт · ещё ' + rem + ' до следующего' : total > 0 ? '🎁 До подарка осталось ' + rem : '🎁 Закажи от ' + money(next.threshold) + ' — подарок: ' + pname(next.products);
-    width = Math.min(100, total / Number(next.threshold) * 100)
+    // The closer the gift, the louder the line: far → calm, half-way → «уже близко», last 20 % → «всего X!».
+    // Share of the way still left to the next gift (from the gift already won, if any).
+    const share = (Number(next.threshold) - total) / (Number(next.threshold) - wonAt), g = pname(next.products);
+    text = total <= 0 ? '🎁 Закажи от ' + money(next.threshold) + ' — подарок: ' + g
+      : share <= .2 ? tr('😱 Всего {x} до подарка! Добавь мелочь — и {g} твой').replace('{x}', rem).replace('{g}', g)
+      : share <= .5 ? tr('🔥 Уже близко! Ещё {x} — и {g} в подарок').replace('{x}', rem).replace('{g}', g)
+      : won ? '🎁 ' + pname(won.products) + ' открыт · ещё ' + rem + ' до следующего' : '🎁 До подарка осталось ' + rem;
+    width = Math.min(100, total / Number(next.threshold) * 100);
+    hot = total > 0 && share <= .2
   } else {
-    text = '🎁 Подарок открыт: ' + (pname(won?.products) || 'максимальный уровень');
-    width = 100
+    text = tr('🎉 Есть! В подарок: {g}').replace('{g}', pname(won?.products) || '');
+    width = 100;
+    hot = true
   }
   let boost = '';
   // Top-up hints only when the gift is genuinely close; otherwise they would push expensive items.
@@ -800,7 +812,9 @@ function renderGift(total) {
   barGift.textContent = total > 0 ? (next ? '🎁 До подарка осталось ' + money(Number(next.threshold) - total) : '🎁 Подарок открыт: ' + (pname(won?.products) || '')) : '';
   boxes.forEach(x => {
     x.hidden = false;
-    x.innerHTML = '<strong class="gtext">' + esc(text) + '</strong><div class="bar"><i style="width:' + width + '%"></i></div><div class="marks">' + marks + '</div>' + bundleNote + boost
+    const was = x.dataset.w ? Number(x.dataset.w) : width;
+    x.dataset.w = width;
+    x.innerHTML = '<strong class="gtext">' + esc(text) + '</strong><div class="bar' + (hot ? ' hot' : '') + (width > was ? ' bump' : '') + '"><i style="width:' + width + '%"></i></div><div class="marks">' + marks + '</div>' + bundleNote + boost
   })
 }
 
@@ -1223,6 +1237,7 @@ async function submitCheckout() {
     let r;
     if (checkoutBundle) r = await PIVKA_DB.createBundleOrder(payload);
     else r = await PIVKA_DB.createOrder(payload);
+    if (window.pivkaSound) pivkaSound('order');
     track('order_complete', { bundleId: checkoutBundle?.id || null, metadata: { order_number: r.order_number, total: Number(r.total), campaign: campaignInfo(), src: visitSource() } });
     try {
       if (r.order_id) localStorage.setItem(TRACK_KEY, JSON.stringify({ id: r.order_id, n: r.order_number, at: Date.now() }))
