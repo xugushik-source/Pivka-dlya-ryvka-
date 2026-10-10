@@ -66,8 +66,8 @@ function renderHoursNote() {
   if (!el) return;
   const closed = slug => catalogAll.some(p => slugOf(p) === slug && !openNow(p));
   const beer = closed('draft'), food = closed('pizza');
-  const text = beer && food ? '🌙 Ночью (23:00–11:00) — крепкое и закуска к нему. Пиво — с 11:00, пицца и хачапури — с 10:00.'
-    : beer ? '☀️ Пиво — с 11:00. Пицца, хачапури и ламаджо уже пекут.' : '';
+  const text = beer && food ? '🌙 Ночью (23:00–11:00) — крепкое и закуска к нему. Пиво — с 11:00, пицца и хачапури — с 12:00.'
+    : food ? '🍕 Пицца, хачапури и ламаджо — с 12:00. Пиво уже наливаем.' : '';
   el.hidden = !text;
   el.textContent = text ? tr(text) : ''
 }
