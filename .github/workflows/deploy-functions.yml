@@ -29,4 +29,9 @@ jobs:
         if: steps.token.outputs.ok == 'true'
         run: |
           # telegram checks its callers itself (webhook secret / internal secret / staff JWT / Mini App initData) → no JWT check.
-          supabase functions deploy telegram --project-ref "$PROJECT_REF" --no-verify-jwt --use-api
+          set -o pipefail
+          # The error is also written as an annotation, so it can be read without opening the raw log.
+          if ! supabase functions deploy telegram --project-ref "$PROJECT_REF" --no-verify-jwt --use-api --debug 2>&1 | tee out.txt; then
+            echo "::error title=Deploy failed::$(grep -v '^$' out.txt | tail -n 25 | sed 's/sbp_[A-Za-z0-9_]*/sbp_***/g' | sed ':a;N;$!ba;s/\n/%0A/g')"
+            exit 1
+          fi
