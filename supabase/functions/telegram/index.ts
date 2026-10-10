@@ -57,7 +57,7 @@ const PAY: Record<string, string> = { CASH: "💵 наличные", CARD: "💳
 async function loadOrder(orderId: string) {
   const { data: o, error } = await db.from("orders")
     .select("id,order_number,status,fulfillment_type,address_snapshot,payment_method,discount_total,delivery_fee,total,comment," +
-      "created_at,confirmed_at,ready_at,delivered_at,cancellation_reason,city_id," +
+      "created_at,confirmed_at,ready_at,delivered_at,cancellation_reason,city_id,from_stock," +
       "customers(full_name,phone),service_cities(name),delivery_zones(name)," +
       "order_items(name_snapshot,quantity,unit_snapshot,unit_price_snapshot,line_total,is_gift,supplier_id,supplier_cost_snapshot,products(prep_minutes,prep_batch))," +
       "delivery_assignments(driver_id,drivers(name)),order_collections(method,created_at)," +
@@ -128,24 +128,27 @@ const ownerReasonsKeyboard = (id: string) => ({
     [{ text: "← Назад, не отменять", callback_data: ocb("bk", id) }],
   ],
 });
-const ownerText = (o: any) => `🍺 <b>Заказ №${o.order_number}</b> · ${time(o.created_at)}\n${orderBody(o)}\n\n<b>Статус:</b> ${statusLine(o)}${suppliersLine(o)}${foodLine(o)}`;
+// Night order (23:00–11:00): the goods come from the owner's own stock, suppliers get nothing.
+const stockLine = (o: any) => o.from_stock ? "\n🏠 <b>Ночной заказ — со склада.</b> Товар берёшь на складе, поставщикам ничего не уходит." : "";
+const ownerText = (o: any) => `🍺 <b>Заказ №${o.order_number}</b> · ${time(o.created_at)}\n${orderBody(o)}\n\n<b>Статус:</b> ${statusLine(o)}${suppliersLine(o)}${foodLine(o)}${stockLine(o)}`;
 
 const offerText = (o: any) => {
   const n = (o.order_items || []).filter((i: any) => !i.is_gift).length;
   return `🆕 <b>Новый заказ №${o.order_number}</b> · ${hm(o.created_at)}\n📍 ${esc(o.service_cities?.name || "")}` +
     `${o.delivery_zones?.name ? " · " + esc(o.delivery_zones.name) : ""}\n🏠 ${esc(o.address_snapshot || "—")}\n` +
-    `${n} поз. · <b>${money(o.total)}</b>${hasHotFood(o) ? "\n🍕 С горячей едой (~" + prepMinutes(o) + " мин)" : ""}\n\nКто возьмёт — звонит клиенту и подтверждает заказ.`;
+    `${n} поз. · <b>${money(o.total)}</b>${o.from_stock ? "\n🏠 Со склада" : ""}${hasHotFood(o) ? "\n🍕 С горячей едой (~" + prepMinutes(o) + " мин)" : ""}\n\nКто возьмёт — звонит клиенту и подтверждает заказ.`;
 };
 
 const HINT: Record<string, string> = {
   NEW: "📞 Позвоните клиенту, уточните заказ и адрес. Клиент что-то меняет — «✏️ Изменить заказ». Всё верно — «Принят».",
   CONFIRMED: "Заберите заказ и нажмите «📦 Собран».",
+  CONFIRMED_STOCK: "Возьмите товар на складе и нажмите «📦 Собран».",
   PREPARING: "Выезжаете к клиенту — нажмите «🛵 Еду»: клиент увидит, что заказ едет.",
   OUT_FOR_DELIVERY: "Отдали заказ? Выберите, как клиент заплатил:",
 };
 const cardText = (o: any) =>
-  `🛵 <b>Заказ №${o.order_number}</b> · ${time(o.created_at)}\n${orderBody(o)}\n\n<b>Статус:</b> ${statusLine(o)}${suppliersLine(o)}${foodLine(o)}` +
-  (HINT[o.status] ? `\n\n${HINT[o.status]}` : "");
+  `🛵 <b>Заказ №${o.order_number}</b> · ${time(o.created_at)}\n${orderBody(o)}\n\n<b>Статус:</b> ${statusLine(o)}${suppliersLine(o)}${foodLine(o)}${stockLine(o)}` +
+  ((o.from_stock && HINT[o.status + "_STOCK"]) || HINT[o.status] ? `\n\n${(o.from_stock && HINT[o.status + "_STOCK"]) || HINT[o.status]}` : "");
 
 const cb = (act: string, id: string, arg = "") => `c|${act}|${id}${arg ? "|" + arg : ""}`;
 function cardKeyboard(o: any) {
@@ -397,7 +400,7 @@ async function onOrderEdited(cfg: Cfg, b: any) {
     const chat = await chatOf("DRIVER", o.driverId);
     if (chat) await quiet(tg(cfg, "sendMessage", { chat_id: chat, text: `✏️ ${esc(who)} изменил заказ №${o.order_number} — проверьте состав.\n${sumLine}${wo}`, parse_mode: "HTML" }));
   }
-  if (o.status === "NEW") return 0; // suppliers haven't got this order yet
+  if (o.status === "NEW" || o.from_stock) return 0; // suppliers haven't got this order yet / night order from the stock
   let sent = 0;
   const removed: string[] = b.removed || [];
   for (const sid of [...new Set<string>([...(b.changed || []), ...removed])]) {
@@ -465,14 +468,23 @@ async function onSupplierCallback(cfg: Cfg, q: any, act: string, id: string, arg
 const ddmm = (day: string) => `${day.slice(8, 10)}.${day.slice(5, 7)}`;
 const plural = (n: number) => n % 10 === 1 && n % 100 !== 11 ? "заказ" : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? "заказа" : "заказов";
 
+// Debt counts partial payments (supplier_payments): due = everything billed − everything paid; debt = the part from earlier days.
+async function balanceOf(supplierId: string) {
+  const { data, error } = await db.rpc("tg_owner", { p_chat: null, p_action: "balance", p_args: { supplier: supplierId } });
+  if (error) throw error;
+  return data as any;
+}
 async function loadSettlement(id: string) {
   const { data: st, error } = await db.from("supplier_settlements").select("*,suppliers(name)").eq("id", id).single();
   if (error) throw error;
-  const { data: prev } = await db.from("supplier_settlements").select("settlement_date,amount")
-    .eq("supplier_id", st.supplier_id).eq("status", "OPEN").lt("settlement_date", st.settlement_date).order("settlement_date");
-  const debt = (prev || []).reduce((t: number, x: any) => t + Number(x.amount), 0);
-  return { ...st, prev: prev || [], debt, due: debt + Number(st.amount) };
+  const b = await balanceOf(st.supplier_id);
+  const due = Math.max(0, Number(b.debt));
+  return { ...st, prev: [], debt: Math.max(0, due - Number(st.amount)), due: st.status === "PAID" ? 0 : due, stock: b.stock || [] };
 }
+const PAYM: Record<string, string> = { CASH: "💵 наличные", TRANSFER: "💳 безнал" };
+const stockHeld = (stock: any[]) => stock.length
+  ? "\n📦 У нас на хранении ваш товар (оплата по мере продажи): " + stock.map((x) => `${esc(x.name)} ${qty(x.qty, x.unit)}`).join(", ")
+  : "";
 
 function supplierDayText(st: any) {
   const d = st.details || {};
@@ -488,13 +500,14 @@ function supplierDayText(st: any) {
     ...poured.map((l) => `• ${row(l)}`),
     "",
     `<b>За день: ${money(st.amount)}</b>`,
-    st.debt > 0 ? `Не оплачено за прошлые дни: ${money(st.debt)} (${st.prev.map((x: any) => ddmm(x.settlement_date)).join(", ")})` : null,
+    st.debt > 0 ? `Не оплачено за прошлые дни: ${money(st.debt)}` : null,
     st.debt > 0 ? `<b>Итого к оплате: ${money(st.due)}</b>` : null,
     "",
     st.status === "PAID" ? `💸 Оплачено ${hm(st.paid_at)}`
       : st.supplier_status === "AGREED" ? "✅ Вы подтвердили — всё сходится. Оплата утром."
       : st.supplier_status === "DISPUTED" ? (st.supplier_note ? `❌ Вы написали: «${esc(st.supplier_note)}». Владелец разберётся.` : "❌ Напишите одним сообщением, что не сходится 👇")
       : "Проверьте, пожалуйста: всё сходится?",
+    stockHeld(st.stock || []) || null,
   ].filter((l) => l !== null).join("\n").replace(/\n{3,}/g, "\n\n");
 }
 const dcb = (act: string, id: string) => `d|${act}|${id}`;
@@ -519,7 +532,10 @@ function ownerDayText(st: any, linked: boolean) {
   ].filter((l) => l !== null).join("\n");
 }
 const ownerDayKeyboard = (st: any) => ({
-  inline_keyboard: st.status === "OPEN" ? [[{ text: `💸 Оплачено ${money(st.due)}`, callback_data: dcb("paid", st.id) }]] : [],
+  inline_keyboard: st.status === "OPEN" && st.due > 0
+    ? [[{ text: `💵 Оплачено налом ${money(st.due)}`, callback_data: dcb("paid_cash", st.id) }],
+       [{ text: `💳 Оплачено безналом ${money(st.due)}`, callback_data: dcb("paid_transfer", st.id) }]]
+    : [],
 });
 
 async function refreshDay(cfg: Cfg, id: string) {
@@ -560,17 +576,24 @@ async function onSupplierDay(cfg: Cfg, ids: string[]) {
   return sent;
 }
 
-// Owner paid (bot button or admin): every day that was closed by this payment shows «Оплачено»; the supplier is told.
-async function onSupplierPaid(cfg: Cfg, supplierId: string, amount: number) {
-  const { data: days } = await db.from("supplier_settlements").select("id,settlement_date").eq("supplier_id", supplierId)
-    .eq("status", "PAID").gte("paid_at", new Date(Date.now() - 5 * 60000).toISOString()).order("settlement_date");
+// A payment (bot button, owner's «💸 Оплата», admin): days it closed show «Оплачено»; the supplier sees the payment and what is left.
+async function onSupplierPaid(cfg: Cfg, supplierId: string, amount: number, method = "") {
+  const { data: days } = await db.from("supplier_settlements").select("id").eq("supplier_id", supplierId)
+    .eq("status", "PAID").gte("paid_at", new Date(Date.now() - 5 * 60000).toISOString());
   for (const d of days || []) await refreshDay(cfg, d.id);
+  const b = await balanceOf(supplierId);
   const chat = await chatOf("SUPPLIER", supplierId);
-  if (chat && days?.length) {
-    await quiet(tg(cfg, "sendMessage", { chat_id: chat, parse_mode: "HTML",
-      text: `💸 Владелец отметил оплату <b>${money(amount)}</b> за ${days.map((d: any) => ddmm(d.settlement_date)).join(", ")}. Спасибо!` }));
-  }
-  return days?.length || 0;
+  if (chat && amount > 0) await quiet(tg(cfg, "sendMessage", { chat_id: chat, parse_mode: "HTML", text: paymentText(b, amount, method) }));
+  return chat ? 1 : 0;
+}
+function paymentText(b: any, amount: number, method: string) {
+  const debt = Number(b.debt), before = debt + amount;
+  return [
+    `💸 <b>Оплата: ${money(amount)}</b>${method ? " · " + PAYM[method] : ""} · ${time(new Date().toISOString())}`,
+    `Долг был: ${money(Math.max(before, 0))} → ${debt > 0 ? `осталось: <b>${money(debt)}</b>` : debt < 0 ? `аванс: <b>${money(-debt)}</b>` : "<b>долга нет</b>"}`,
+    Number(b.today) > 0 ? `Сегодня пока: ${money(b.today)} (войдёт в итог дня в 00:05)` : null,
+    stockHeld(b.stock || []) || null,
+  ].filter((l) => l !== null).join("\n");
 }
 
 async function onDayCallback(cfg: Cfg, q: any, act: string, id: string) {
@@ -580,7 +603,7 @@ async function onDayCallback(cfg: Cfg, q: any, act: string, id: string) {
   if (error) { console.error(error); return answer("Не получилось: " + error.message, true); }
   if (r?.error === "already") { await refreshDay(cfg, id); return answer("Уже оплачено"); }
   if (r?.error) return answer(r.error === "forbidden" ? "Эта кнопка не для вас." : "Не получилось", true);
-  if (act === "paid") { await onSupplierPaid(cfg, (await loadSettlement(id)).supplier_id, Number(r.amount)); return answer("Отмечено: оплачено"); }
+  if (act.startsWith("paid")) { await onSupplierPaid(cfg, (await loadSettlement(id)).supplier_id, Number(r.amount), r.method || ""); return answer("Отмечено: оплачено"); }
   await refreshDay(cfg, id);
   return answer(act === "ok" ? "Спасибо!" : "Напишите, что не так");
 }
@@ -717,10 +740,183 @@ async function onSupportOwnerMessage(cfg: Cfg, m: any) {
   return true;
 }
 
+// ---------- Owner's menu: «📥 Приход», «💸 Оплата», «📦 Склад», «📊 Долги» (night stock and supplier payments)
+// Steps that need a number keep their state in tg_owner_state (30 min). Every action is checked in tg_owner by the owner's chat.
+
+const OWNER_MENU = {
+  keyboard: [[{ text: "📥 Приход" }, { text: "💸 Оплата" }], [{ text: "📦 Склад" }, { text: "📊 Долги" }]],
+  resize_keyboard: true, is_persistent: true,
+};
+const wcb = (act: string, arg = "") => `w|${act}${arg ? "|" + arg : ""}`;
+const owner = (chat: number, action: string, args: Record<string, unknown> = {}) =>
+  db.rpc("tg_owner", { p_chat: chat, p_action: action, p_args: args }).then((r) => { if (r.error) throw r.error; return r.data as any; });
+async function isOwnerChat(chat: number) {
+  const { data } = await db.from("telegram_links").select("id").eq("kind", "OWNER").eq("active", true).eq("chat_id", chat).maybeSingle();
+  return !!data;
+}
+async function getState(chat: number) {
+  const { data } = await db.from("tg_owner_state").select("step,data,at").eq("chat_id", chat).maybeSingle();
+  return data && Date.now() - new Date(data.at).getTime() < 30 * 60000 ? data : null;
+}
+const setState = (chat: number, step: string, data: unknown) =>
+  db.from("tg_owner_state").upsert({ chat_id: chat, step, data, at: new Date().toISOString() });
+const clearState = (chat: number) => db.from("tg_owner_state").delete().eq("chat_id", chat);
+const say = (cfg: Cfg, chat: number, text: string, reply_markup: unknown = OWNER_MENU) =>
+  tg(cfg, "sendMessage", { chat_id: chat, text, parse_mode: "HTML", reply_markup });
+const num = (t: string) => { const m = String(t).trim().replace(",", ".").replace(/[−–—]/, "-").replace(/\s+/g, " ").match(/^([+-]?\d+(?:\.\d+)?)\s*(?:₾|лари|шт|л)?$/i); return m ? Number(m[1]) : null; };
+
+function stockText(list: any[]) {
+  if (!list.length) return "Ночной ассортимент пуст.";
+  let who = "";
+  return "📦 <b>Ночной склад</b>\n" + list.map((x) => {
+    const head = x.supplier !== who ? `\n<b>${esc(x.supplier || "Без поставщика")}</b>\n` : "";
+    who = x.supplier;
+    const busy = Number(x.stock) - Number(x.left);
+    return head + `${Number(x.stock) > 0 ? "•" : "▫️"} ${esc(x.name)} — ${qty(x.stock, x.unit)}${busy > 0 ? ` (в заказах ${qty(busy, x.unit)})` : ""}`;
+  }).join("\n") + "\n\nДобавить — «📥 Приход».";
+}
+function debtsText(list: any[]) {
+  if (!list.length) return "📊 Долгов нет.";
+  let total = 0;
+  const rows = list.map((b) => {
+    const debt = Number(b.debt); total += Math.max(debt, 0);
+    const held = (b.stock || []).reduce((t: number, x: any) => t + Number(x.qty) * Number(x.cost || 0), 0);
+    const last = (b.last || [])[0];
+    return [
+      `<b>${esc(b.supplier)}</b>: ${debt > 0 ? "долг " + money(debt) : debt < 0 ? "аванс " + money(-debt) : "долга нет"}`,
+      Number(b.today) > 0 ? `   сегодня пока: ${money(b.today)}` : null,
+      held > 0 ? `   на складе его товара: ${money(held)} по закупу` : null,
+      last ? `   последняя оплата: ${money(last.amount)} ${PAYM[last.method]} · ${time(last.at)}` : null,
+    ].filter(Boolean).join("\n");
+  });
+  return "📊 <b>Поставщики</b>\n\n" + rows.join("\n\n") + `\n\n<b>Всего долг: ${money(total)}</b>`;
+}
+
+// Owner's private chat: menu buttons and the numbers they ask for. Returns true when handled.
+async function onOwnerText(cfg: Cfg, m: any) {
+  if (m.chat.type !== "private" || !m.text || m.reply_to_message || !(await isOwnerChat(m.chat.id))) return false;
+  const chat = m.chat.id, t = String(m.text).trim(), low = t.toLowerCase();
+  if (/приход/.test(low)) {
+    await clearState(chat);
+    const list = await owner(chat, "stock");
+    await say(cfg, chat, "📥 <b>Приход на ночной склад</b> — что взяли?", {
+      inline_keyboard: [...list.map((x: any) => [{ text: `${x.name} · ${Number(x.stock)}`.slice(0, 60), callback_data: wcb("in", x.id) }]),
+        [{ text: "✖️ Отмена", callback_data: wcb("no") }]],
+    });
+    return true;
+  }
+  if (/оплат/.test(low)) {
+    await clearState(chat);
+    const list = await owner(chat, "suppliers");
+    if (!list.length) { await say(cfg, chat, "Пока некому платить."); return true; }
+    await say(cfg, chat, "💸 <b>Оплата</b> — кому?", {
+      inline_keyboard: [...list.map((b: any) => [{ text: `${b.supplier} · ${Number(b.debt) > 0 ? "долг " + money(b.debt) : "долга нет"}`.slice(0, 60), callback_data: wcb("pay", b.id) }]),
+        [{ text: "✖️ Отмена", callback_data: wcb("no") }]],
+    });
+    return true;
+  }
+  if (/склад/.test(low)) { await say(cfg, chat, stockText(await owner(chat, "stock"))); return true; }
+  if (/долг/.test(low)) { await say(cfg, chat, debtsText(await owner(chat, "suppliers"))); return true; }
+  if (/^\/?(меню|menu)$/.test(low)) { await say(cfg, chat, "Меню внизу 👇"); return true; }
+
+  const st = await getState(chat);
+  if (!st) return false;
+  const n = num(t);
+  if (n === null || n === 0) { await say(cfg, chat, "Напишите число, например 12. Или «✖️ Отмена» в сообщении выше."); return true; }
+  if (st.step === "in_qty") {
+    await setState(chat, "in_ok", { ...st.data, qty: n });
+    await say(cfg, chat, `${n > 0 ? "📥 Приход" : "↩️ Вернули поставщику"}: <b>${esc(st.data.name)}</b> ${n > 0 ? "+" : "−"}${qty(Math.abs(n), st.data.unit)}\n` +
+      `${esc(st.data.supplier || "")}${st.data.cost ? ` · закуп ${money(st.data.cost)}` : ""}\n\nВерно?`,
+      { inline_keyboard: [[{ text: "✅ Верно", callback_data: wcb("inok") }, { text: "✖️ Отмена", callback_data: wcb("no") }]] });
+    return true;
+  }
+  if (st.step === "pay_amount") {
+    if (n < 0) { await say(cfg, chat, "Сумма должна быть больше нуля."); return true; }
+    await setState(chat, "pay_method", { ...st.data, amount: n });
+    await say(cfg, chat, `💸 <b>${esc(st.data.name)}</b>: ${money(n)}\nДолг сейчас: ${money(Math.max(0, st.data.debt))} → после оплаты: ${money(st.data.debt - n)}\n\nКак оплатили?`,
+      { inline_keyboard: [[{ text: "💵 Наличные", callback_data: wcb("pm", "CASH") }, { text: "💳 Безнал", callback_data: wcb("pm", "TRANSFER") }],
+        [{ text: "✖️ Отмена", callback_data: wcb("no") }]] });
+    return true;
+  }
+  return false;
+}
+
+async function onOwnerMenuCallback(cfg: Cfg, q: any, act: string, arg: string) {
+  const answer = (text = "", alert = false) => quiet(tg(cfg, "answerCallbackQuery", { callback_query_id: q.id, text, show_alert: alert }));
+  const chat = q.message?.chat?.id, msg = q.message?.message_id;
+  if (!(await isOwnerChat(chat))) return answer("Это только для владельца.", true);
+  const done = (text: string) => quiet(tg(cfg, "editMessageText", { chat_id: chat, message_id: msg, text, parse_mode: "HTML" }));
+  if (act === "no") { await clearState(chat); await done("✖️ Отменено."); return answer(); }
+
+  if (act === "in") {
+    const x = (await owner(chat, "stock")).find((p: any) => p.id === arg);
+    if (!x) return answer("Товар не найден", true);
+    await setState(chat, "in_qty", { product: x.id, name: x.name, unit: x.unit, supplier: x.supplier, cost: x.cost });
+    await done(`📥 <b>${esc(x.name)}</b> (сейчас ${qty(x.stock, x.unit)}) — сколько взяли?\nНапишите число. Вернули поставщику — с минусом, например −2.`);
+    return answer();
+  }
+  if (act === "inok") {
+    const st = await getState(chat);
+    if (st?.step !== "in_ok") { await done("Устарело — начните заново: «📥 Приход»."); return answer(); }
+    const r = await owner(chat, "stock_in", { product: st.data.product, qty: st.data.qty });
+    await clearState(chat);
+    if (r?.error) {
+      await done(r.error === "below_zero" ? `Нельзя убрать больше, чем есть: на складе ${Number(r.stock)}.` : "Не получилось: " + r.error);
+      return answer();
+    }
+    const sChat = r.supplier_id ? await chatOf("SUPPLIER", r.supplier_id) : null;
+    const b = r.supplier_id ? await balanceOf(r.supplier_id) : null;
+    const n = Number(r.qty);
+    if (sChat) {
+      await quiet(tg(cfg, "sendMessage", { chat_id: sChat, parse_mode: "HTML", text:
+        (n > 0
+          ? `📥 <b>Взято на ночной склад</b>: ${esc(r.name)} — ${qty(n, r.unit)}${r.cost ? ` (по ${money(r.cost)})` : ""}.\nЭто ваш товар у нас на хранении: оплачиваем по мере продажи, проданное войдёт в итог дня.`
+          : `↩️ <b>Вернули вам со склада</b>: ${esc(r.name)} — ${qty(-n, r.unit)}.`) + (b ? stockHeld(b.stock || []) : "") }));
+    }
+    await done(`✅ ${n > 0 ? "Приход" : "Возврат"}: <b>${esc(r.name)}</b> ${n > 0 ? "+" : "−"}${qty(Math.abs(n), r.unit)}. На складе: ${qty(r.stock, r.unit)}.\n` +
+      (sChat ? `${esc(r.supplier)} получил сообщение.` : `⚠️ ${esc(r.supplier || "Поставщик")} не подключён к боту — сообщите ему сами.`));
+    return answer("Записано");
+  }
+  if (act === "pay") {
+    const b = await owner(chat, "balance", { supplier: arg });
+    await setState(chat, "pay_amount", { supplier: arg, name: b.supplier, debt: Number(b.debt) });
+    await done(`💸 <b>${esc(b.supplier)}</b>: ${Number(b.debt) > 0 ? "долг " + money(b.debt) : Number(b.debt) < 0 ? "аванс " + money(-b.debt) : "долга нет"}` +
+      `${Number(b.today) > 0 ? `\nСегодня пока: ${money(b.today)} (войдёт в долг в 00:05)` : ""}\n\nСколько оплатили? Напишите сумму.`);
+    return answer();
+  }
+  if (act === "pm") {
+    const st = await getState(chat);
+    if (st?.step !== "pay_method") { await done("Устарело — начните заново: «💸 Оплата»."); return answer(); }
+    const r = await owner(chat, "pay", { supplier: st.data.supplier, amount: st.data.amount, method: arg });
+    await clearState(chat);
+    if (r?.error) { await done("Не получилось: " + r.error); return answer(); }
+    const sent = await onSupplierPaid(cfg, st.data.supplier, Number(r.amount), arg);
+    const after = Number(r.debt_after);
+    await done(`✅ Оплата записана: <b>${esc(st.data.name)}</b> ${money(r.amount)} · ${PAYM[arg]}\n` +
+      `${after > 0 ? "Осталось долга: " + money(after) : after < 0 ? "Аванс: " + money(-after) : "Долга нет"}\n` +
+      (sent ? "Поставщик получил сообщение." : "⚠️ Поставщик не подключён к боту — сообщите ему сами."));
+    return answer("Записано");
+  }
+  return answer();
+}
+
+// 11:00 Tbilisi: how the night went.
+async function onStockMorning(cfg: Cfg) {
+  const r = await owner(null as any, "morning");
+  const sold = (r.sold || []) as any[], stock = (r.stock || []) as any[], paid = r.paid || {};
+  const text = [
+    `🌅 <b>Ночь (23:00–11:00)</b>: ${r.orders} ${plural(Number(r.orders))} со склада · выручка ${money(r.revenue)}`,
+    sold.length ? "\n<b>Продано со склада</b> (поставщикам по закупу):\n" + sold.map((x) => `• ${esc(x.name)} — ${qty(x.qty, x.unit)} · ${money(x.cost)}`).join("\n") : "Ночью со склада ничего не продано.",
+    "\n<b>Осталось на складе</b>:\n" + (stock.length ? stock.map((x) => `${Number(x.stock) > 0 ? "•" : "⚠️"} ${esc(x.name)} — ${Number(x.stock) > 0 ? qty(x.stock, x.unit) : "нет"}`).join("\n") : "—"),
+    (paid.CASH || paid.TRANSFER) ? `\n💸 Оплаты поставщикам за сутки: ${[paid.CASH ? "нал " + money(paid.CASH) : "", paid.TRANSFER ? "безнал " + money(paid.TRANSFER) : ""].filter(Boolean).join(" · ")}` : null,
+  ].filter((l) => l !== null).join("\n");
+  return await sendToKind(cfg, "OWNER", text);
+}
+
 // ---------- Telegram updates
 
 const WELCOME: Record<string, (label: string) => string> = {
-  OWNER: () => "✅ Готово! Сюда будут приходить все новые заказы целиком.",
+  OWNER: () => "✅ Готово! Сюда будут приходить все новые заказы целиком.\nВнизу меню: приход на ночной склад, оплаты поставщикам, склад и долги.",
   SUPPLIER: (n) => `✅ Готово${n ? ", " + esc(n) : ""}! Сюда будут приходить заказы для подготовки — только ваши товары.`,
   DRIVER: (n) => `✅ Готово${n ? ", " + esc(n) : ""}! Сюда будут приходить новые заказы вашего города. Нажмите «🙋 Беру», позвоните клиенту — и дальше по кнопкам.`,
   SUPPORT: () => "✅ Группа подключена: сюда будут приходить чаты клиентов с сайта — у каждого клиента своя тема. Пишите в теме клиента — ответ сразу появится у него на сайте.",
@@ -746,7 +942,8 @@ async function onStart(cfg: Cfg, m: any) {
   await db.from("telegram_links").update({
     chat_id: m.chat.id, tg_username: m.from?.username || null, linked_at: new Date().toISOString(),
   }).eq("id", link.id);
-  await tg(cfg, "sendMessage", { chat_id: m.chat.id, text: WELCOME[link.kind](link.label || ""), parse_mode: "HTML" });
+  await tg(cfg, "sendMessage", { chat_id: m.chat.id, text: WELCOME[link.kind](link.label || ""), parse_mode: "HTML",
+    ...(link.kind === "OWNER" ? { reply_markup: OWNER_MENU } : {}) });
   if (link.kind === "SUPPORT" && !m.chat.is_forum) {
     await quiet(tg(cfg, "sendMessage", { chat_id: m.chat.id, text: "⚠️ Включите в настройках группы «Темы» (Topics) и сделайте бота администратором с правом «Управление темами» — тогда у каждого клиента будет своя тема." }));
   }
@@ -790,6 +987,7 @@ async function onCallback(cfg: Cfg, q: any) {
   if (kind === "s" && id && chat) return onSupplierCallback(cfg, q, act, id, arg ?? "");
   if (kind === "d" && id && chat) return onDayCallback(cfg, q, act, id);
   if (kind === "o" && id && chat) return onOwnerCallback(cfg, q, act, id, arg ?? "");
+  if (kind === "w" && act && chat) return onOwnerMenuCallback(cfg, q, act, id ?? "");
   if (kind !== "c" || !id || !chat) return answer();
 
   if (act === "cm") { await quiet(tg(cfg, "editMessageReplyMarkup", { chat_id: chat, message_id: msg, reply_markup: reasonsKeyboard(id) })); return answer("Почему отменяем?"); }
@@ -832,6 +1030,7 @@ async function onUpdate(cfg: Cfg, u: any) {
   if (!m?.chat?.id) return;
   if (m.text && /^\/start/.test(m.text)) return onStart(cfg, m);
   if (await onSupportOwnerMessage(cfg, m)) return;   // chat with a customer
+  if (await onOwnerText(cfg, m)) return;             // owner's menu: stock, payments
   if (m.text && ["private", "group", "supergroup"].includes(m.chat.type)) return onText(cfg, m); // supplier's «не сходится» note
 }
 
@@ -898,6 +1097,7 @@ Deno.serve(async (req) => {
       if (b.action === "supplier_day") return out({ sent: await onSupplierDay(cfg, b.ids || []) });
       if (b.action === "supplier_paid") return out({ sent: await onSupplierPaid(cfg, b.supplier_id, Number(b.amount)) });
       if (b.action === "support_in") return out({ sent: await onSupportIn(cfg, Number(b.message_id)) });
+      if (b.action === "stock_morning") return out({ sent: await onStockMorning(cfg) });
       if (b.action === "support_blocked") return out({ sent: await onSupportBlocked(cfg, b.thread_id, b.until) });
       return out({ error: "Unknown action" }, 400);
     }
