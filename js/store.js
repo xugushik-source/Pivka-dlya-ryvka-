@@ -1389,10 +1389,20 @@ observeNav();
     const social = new URLSearchParams(location.search).get('social');
     if (social) openIncoming(social)
   } catch (e) {
-    products.innerHTML = '<div class="empty">Не удалось загрузить каталог</div>';
+    // Usually a weak connection: reload once by itself, then offer a button.
     console.warn(e);
+    let tries = 0;
+    try { tries = Number(sessionStorage.getItem('pivka_reload') || 0) } catch (x) {}
+    if (tries < 1) {
+      try { sessionStorage.setItem('pivka_reload', tries + 1) } catch (x) {}
+      products.innerHTML = '<div class="empty">' + esc(tr('Слабая связь — загружаем ещё раз…')) + '</div>';
+      setTimeout(() => location.reload(), 2500);
+      return
+    }
+    products.innerHTML = '<div class="empty">' + esc(tr('Не удалось загрузить каталог')) + '<br><button type="button" class="cta" style="margin-top:12px" onclick="try{sessionStorage.removeItem(\'pivka_reload\')}catch(e){}location.reload()">' + esc(tr('Обновить')) + '</button></div>';
     renderCart()
   }
+  try { sessionStorage.removeItem('pivka_reload') } catch (x) {}
 })();
 const I18N = {
   ru: {
