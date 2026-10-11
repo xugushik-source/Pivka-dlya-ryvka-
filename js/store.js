@@ -48,9 +48,9 @@ const hm2min = t => { const [h, m] = String(t).split(':'); return +h * 60 + +m }
 function tbilisiMin() {
   try { return hm2min(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tbilisi', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date())) } catch (e) { const d = new Date(); return d.getHours() * 60 + d.getMinutes() }
 }
-// Night (23:00–11:00): the night assortment is sold from the owner's stock — «осталось N», gone when 0.
+// Night (23:00–10:00): the night assortment is sold from the owner's stock — «осталось N», gone when 0.
 const STOCK = {};
-const stockNight = () => { const m = tbilisiMin(); return m < 11 * 60 || m >= 23 * 60 };
+const stockNight = () => { const m = tbilisiMin(); return m < 10 * 60 || m >= 23 * 60 };
 const stockLeft = p => stockNight() && STOCK[p.id] != null ? STOCK[p.id] : null;
 async function loadStock() {
   try {
@@ -77,7 +77,8 @@ function renderHoursNote() {
   if (!el) return;
   const closed = slug => catalogAll.some(p => slugOf(p) === slug && !openNow(p));
   const beer = closed('draft'), food = closed('pizza');
-  const text = beer && food ? '🌙 Ночью (23:00–11:00) — крепкое и закуска к нему. Пиво — с 11:00, пицца и хачапури — с 12:00.'
+  const text = beer && food ? (stockNight() ? '🌙 Ночью (23:00–10:00) — крепкое и закуска к нему. Магазин — с 10:00, пиво, пицца и хачапури — с 12:00.'
+      : '☀️ Пиво, пицца, хачапури и ламаджо — с 12:00. Остальное уже везём.')
     : food ? '🍕 Пицца, хачапури и ламаджо — с 12:00. Пиво уже наливаем.' : '';
   el.hidden = !text;
   el.textContent = text ? tr(text) : ''
@@ -618,7 +619,7 @@ function renderBundles() {
   // At night Рывки with beer or food are not sold: hide them instead of a wall of disabled cards.
   const shown = bundleCatalog.filter(b => b.unavailable_reason !== 'CLOSED_NOW');
   if (!shown.length) {
-    bundles.innerHTML = '<div class="empty">' + (bundleCatalog.length ? tr('🌙 Ночью готовые рывки не собираем — возьми крепкое и закуску в «Собрать свой». Рывки — с 11:00.') : 'Готовые рывки скоро появятся') + '</div>';
+    bundles.innerHTML = '<div class="empty">' + (bundleCatalog.length ? tr(stockNight() ? '🌙 Ночью готовые рывки не собираем — возьми крепкое и закуску в «Собрать свой». Рывки — с 10:00, с пивом и пиццей — с 12:00.' : '☀️ Рывки с пивом и пиццей — с 12:00. А пока собери свой в «Собрать свой».') : 'Готовые рывки скоро появятся') + '</div>';
     return
   }
   bundles.innerHTML = shown.map((b, n) => {
@@ -631,7 +632,7 @@ function renderBundles() {
         const sl = itemSlug(i), ico = STRONG_GROUP.includes(sl) ? '🥃' : ITEM_ICO[sl] || '•', q = Number(i.quantity);
         return '<li>' + ico + ' ' + esc(pname(i)) + (i.unit === 'liter' ? ' — ' + q + unitL() : q > 1 ? ' × ' + q : '') + '</li>'
       }).join('');
-    return `<article class="card bundle${ok?'':' off'}${on?' chosen':''}" style="--i:${n}"><div class="bthumbs">${thumbs}</div><div class="pad"><div><span class="tag">${esc(b.badge_text||'РЫВОК')}</span>${b.serves_label?'<span class="serves">'+esc(b.serves_label)+'</span>':''}</div><h3>${esc(b.name)}</h3>${b.description?'<div class="bidea">'+esc(b.description)+'</div>':''}<div class="bprices">${save>0?'<div><span class="lbl">По отдельности</span><s>'+money(b.regular_total)+'</s></div>':''}<div><span class="lbl">Рывком</span><b class="now">${money(b.price)}</b></div>${save>0?'<div><span class="lbl">Экономия</span><b class="save">'+money(save)+'</b></div>':''}</div><ul class="bcomp"><span class="lbl">В составе</span>${comp}</ul>${ok?`<button type="button" class="cta" onclick="chooseBundle('${b.id}')">${on?'Рывок выбран ✓':'ВЗЯТЬ РЫВОК'}</button>`:'<button type="button" class="cta" disabled>'+(b.unavailable_reason==='CLOSED_NOW'?tr('Днём, с 11:00'):'Временно недоступен')+'</button>'}</div></article>`
+    return `<article class="card bundle${ok?'':' off'}${on?' chosen':''}" style="--i:${n}"><div class="bthumbs">${thumbs}</div><div class="pad"><div><span class="tag">${esc(b.badge_text||'РЫВОК')}</span>${b.serves_label?'<span class="serves">'+esc(b.serves_label)+'</span>':''}</div><h3>${esc(b.name)}</h3>${b.description?'<div class="bidea">'+esc(b.description)+'</div>':''}<div class="bprices">${save>0?'<div><span class="lbl">По отдельности</span><s>'+money(b.regular_total)+'</s></div>':''}<div><span class="lbl">Рывком</span><b class="now">${money(b.price)}</b></div>${save>0?'<div><span class="lbl">Экономия</span><b class="save">'+money(save)+'</b></div>':''}</div><ul class="bcomp"><span class="lbl">В составе</span>${comp}</ul>${ok?`<button type="button" class="cta" onclick="chooseBundle('${b.id}')">${on?'Рывок выбран ✓':'ВЗЯТЬ РЫВОК'}</button>`:'<button type="button" class="cta" disabled>'+(b.unavailable_reason==='CLOSED_NOW'?tr('Днём, с 12:00'):'Временно недоступен')+'</button>'}</div></article>`
   }).join('')
 }
 
