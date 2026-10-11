@@ -128,7 +128,7 @@ const ownerReasonsKeyboard = (id: string) => ({
     [{ text: "← Назад, не отменять", callback_data: ocb("bk", id) }],
   ],
 });
-// Night order (23:00–11:00): the goods come from the owner's own stock, suppliers get nothing.
+// Night order (23:00–10:00): the goods come from the owner's own stock, suppliers get nothing.
 const stockLine = (o: any) => o.from_stock ? "\n🏠 <b>Ночной заказ — со склада.</b> Товар берёшь на складе, поставщикам ничего не уходит." : "";
 const ownerText = (o: any) => `🍺 <b>Заказ №${o.order_number}</b> · ${time(o.created_at)}\n${orderBody(o)}\n\n<b>Статус:</b> ${statusLine(o)}${suppliersLine(o)}${foodLine(o)}${stockLine(o)}`;
 
@@ -900,12 +900,12 @@ async function onOwnerMenuCallback(cfg: Cfg, q: any, act: string, arg: string) {
   return answer();
 }
 
-// 11:00 Tbilisi: how the night went.
+// 10:00 Tbilisi: how the night went.
 async function onStockMorning(cfg: Cfg) {
   const r = await owner(null as any, "morning");
   const sold = (r.sold || []) as any[], stock = (r.stock || []) as any[], paid = r.paid || {};
   const text = [
-    `🌅 <b>Ночь (23:00–11:00)</b>: ${r.orders} ${plural(Number(r.orders))} со склада · выручка ${money(r.revenue)}`,
+    `🌅 <b>Ночь (23:00–10:00)</b>: ${r.orders} ${plural(Number(r.orders))} со склада · выручка ${money(r.revenue)}`,
     sold.length ? "\n<b>Продано со склада</b> (поставщикам по закупу):\n" + sold.map((x) => `• ${esc(x.name)} — ${qty(x.qty, x.unit)} · ${money(x.cost)}`).join("\n") : "Ночью со склада ничего не продано.",
     "\n<b>Осталось на складе</b>:\n" + (stock.length ? stock.map((x) => `${Number(x.stock) > 0 ? "•" : "⚠️"} ${esc(x.name)} — ${Number(x.stock) > 0 ? qty(x.stock, x.unit) : "нет"}`).join("\n") : "—"),
     (paid.CASH || paid.TRANSFER) ? `\n💸 Оплаты поставщикам за сутки: ${[paid.CASH ? "нал " + money(paid.CASH) : "", paid.TRANSFER ? "безнал " + money(paid.TRANSFER) : ""].filter(Boolean).join(" · ")}` : null,
