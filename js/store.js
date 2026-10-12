@@ -124,7 +124,7 @@ const SUB_LABEL = {
 };
 // Real photos for section tiles (assets/cat): scene crops from the bar photo, or real packshots on the same bar backdrop.
 const CAT_IMG = ['draft', 'strong', 'wine', 'pizza', 'restaurant', 'fish', 'meat-snacks', 'cheese', 'nuts', 'chips', 'snacks', 'soft-drinks', 'energy', 'salty', 'seafood', 'frozen', 'supplies'];
-const catImg = slug => CAT_IMG.includes(slug) ? './assets/cat/' + slug + '.jpg?v=20261002e' : '';
+const catImg = slug => CAT_IMG.includes(slug) ? './assets/cat/' + slug + '.jpg?v=20261012e' : '';
 const LI = () => ({ ru: 0, ka: 1, hy: 2 }[lang()] || 0);
 const tr = s => (window.PIVKA_I18N ? PIVKA_I18N.translate(s, lang()) : s);
 function catConf(slug) {
