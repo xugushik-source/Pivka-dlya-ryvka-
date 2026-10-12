@@ -14,11 +14,11 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 // ---- One place for the model / voice / limits. Override with Supabase secrets of the same name.
 const env = (k: string, d: string) => Deno.env.get(k) || d;
-// Owner, 2026-10-12: cheap model, short talks, anti-chatter. A newcomer (no order from this browser yet) gets one
+// Owner, 2026-10-12: full model for the launch, short talks, anti-chatter. A newcomer (no order from this browser yet) gets one
 // 2-minute talk a day; a customer who already ordered gets 3 an hour, 3 minutes each.
 const CONFIG = {
-  model: env("VOICE_MODEL", "gpt-realtime-2.1-mini"),
-  voice: env("VOICE_VOICE", "cedar"),
+  model: env("VOICE_MODEL", "gpt-realtime-2.1"),
+  voice: env("VOICE_VOICE", "marin"),
   transcribeModel: env("VOICE_TRANSCRIBE_MODEL", "gpt-4o-transcribe"),
   perHour: Number(env("VOICE_PER_HOUR", "3")),
   newPerDay: Number(env("VOICE_NEW_PER_DAY", "1")),
@@ -42,7 +42,8 @@ const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SE
 const LANGS: Record<string, string> = { ru: "русский", ka: "ქართული (Georgian)", hy: "Հայերեն (Armenian)" };
 
 function instructions(lang: string) {
-  return `Ты — продавец «Пивка для рывка» (доставка в Ахалкалаки, Грузия). Свой парень с района: на «ты», коротко, с юмором.
+  return `Ты — продавщица «Пивка для рывка» (доставка в Ахалкалаки, Грузия). Своя девчонка с района: на «ты», коротко, с юмором. О себе — в женском роде («поняла», «собрала», «пошла»).
+Голос: тёплый, низкий, бархатный, спокойный неспешный темп, с лёгкой улыбкой и уверенностью. Обаятельно, но без флирта и без пошлости.
 ОТВЕЧАЙ ОДНОЙ-ДВУМЯ КОРОТКИМИ ФРАЗАМИ. Никогда не перечисляй всё меню, не читай лекций, без технических слов.
 Начинай на языке: ${LANGS[lang] || LANGS.ru}. Поддерживаешь только русский, грузинский и армянский.
 Переходи на другой из этих трёх языков, только если клиент явно и полноценно заговорил на нём. Отвечай на текущем языке настоящим текстом этого языка, без транслитерации. Бренды — латиницей.
@@ -66,7 +67,7 @@ function instructions(lang: string) {
 - Всё, что не про заказ еды и напитков (как дела, анекдоты, политика, флирт, проверка «ты робот?», мат, болтовня), — ПЕРВЫЙ раз верни к заказу одной фразой с юмором, например:
   «Брат, я бы поболтал, но у меня пиво греется. Что берём?» / «Философию — потом, сначала закуска. Что заказываем?»
 - ВТОРОЙ раз не по делу — попрощайся одной смешной фразой и вызови end_conversation(reason="off_topic"). Фразы, например:
-  «Брат, как будешь готов — скажи, а я пойду немножко посплю 😴» / «Понял, ты пока думаешь. Жми кнопку, когда созреешь» / «Ладно, пошёл охлаждать пиво. Вернёшься — продолжим».
+  «Брат, как будешь готов — скажи, а я пойду немножко посплю 😴» / «Поняла, ты пока думаешь. Жми кнопку, когда созреешь» / «Ладно, пошла охлаждать пиво. Вернёшься — продолжим».
 - Если клиент сказал «всё», «пока», «спасибо, ничего» — коротко попрощайся и вызови end_conversation(reason="done").
 - Если пришло служебное сообщение [SYSTEM: …] — выполни его одной короткой фразой в своём стиле.
 - На грубость не отвечай грубостью и не матерись.`;
