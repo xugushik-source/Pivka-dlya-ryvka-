@@ -272,7 +272,7 @@ function phoneOk(v) {
 // Order status for the customer. The browser keeps the id of the order it just placed (a random uuid) and asks the
 // database for its status — no phone, no login. Steps: Получен → Принят → Собран → (30 s) Едет → Доставлен / Отменён.
 const TRACK_KEY = 'pivka_last_order';
-const TRACK_KEEP_MS = 15 * 60e3; // a cancelled order's card disappears after 15 minutes
+const TRACK_KEEP_MS = 60e3; // a cancelled order's card disappears after a minute (owner, 2026-10-12)
 const TRACK_DELIVERED_KEEP_MS = 24 * 3600e3; // after delivery only the game stays — up to a day, while attempts remain
 // Someone who ordered in the last 12 hours comes back to see the status: skip the long intro credits.
 try {
