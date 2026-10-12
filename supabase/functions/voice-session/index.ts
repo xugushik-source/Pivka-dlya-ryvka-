@@ -21,7 +21,7 @@ const CONFIG = {
   voice: env("VOICE_VOICE", "marin"),
   transcribeModel: env("VOICE_TRANSCRIBE_MODEL", "gpt-4o-transcribe"),
   perHour: Number(env("VOICE_PER_HOUR", "3")),
-  newPerDay: Number(env("VOICE_NEW_PER_DAY", "20")), // TEMP 2026-10-12: owner testing; back to "1" tonight
+  newPerDay: Number(env("VOICE_NEW_PER_DAY", "1")),
   minGapSeconds: Number(env("VOICE_MIN_GAP_SECONDS", "60")),
   dailyLimit: Number(env("VOICE_DAILY_LIMIT", "50")),
   maxSeconds: Number(env("VOICE_MAX_SECONDS", "180")),
