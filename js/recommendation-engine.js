@@ -9,7 +9,7 @@
   // Snack order of preference with beer; the first ones are the «real» beer food.
   const SNACKS = ['fish', 'cheese', 'meat-snacks', 'nuts', 'chips', 'snacks', 'salty'];
   // Only on request (frozen/raw, need cooking): seafood, frozen.
-  const ON_REQUEST = ['seafood', 'frozen'];
+  const ON_REQUEST = ['seafood', 'frozen', 'restaurant'];
   const r2 = (n) => Math.round(n * 100) / 100;
   const slug = (p) => p.category_slug || (p.categories && p.categories.slug) || '';
   const price = (p) => Number(p.sale_price || 0);
