@@ -49,14 +49,16 @@ const hm2min = t => { const [h, m] = String(t).split(':'); return +h * 60 + +m }
 function tbilisiMin() {
   try { return hm2min(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tbilisi', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date())) } catch (e) { const d = new Date(); return d.getHours() * 60 + d.getMinutes() }
 }
-// Night (23:00–10:00): the night assortment is sold from the owner's stock — «осталось N», gone when 0.
+// «Осталось N», gone when 0: our own shelf (МАДО…) around the clock; the night assortment (23:00–10:00) from the
+// owner's night stock. Only what was entered into the stock can be sold.
 const STOCK = {};
 const stockNight = () => { const m = tbilisiMin(); return m < 10 * 60 || m >= 23 * 60 };
-const stockLeft = p => stockNight() && STOCK[p.id] != null ? STOCK[p.id] : null;
+const stockLeft = p => { const e = STOCK[p.id]; return e && (e.own || stockNight()) ? e.left : null };
 async function loadStock() {
   try {
-    const r = await PIVKA_DB.client().rpc('night_stock');
-    if (!r.error) (r.data || []).forEach(x => STOCK[x.product_id] = Number(x.left_qty))
+    let r = await PIVKA_DB.client().rpc('shelf_stock');
+    if (r.error) r = await PIVKA_DB.client().rpc('night_stock');
+    if (!r.error) (r.data || []).forEach(x => STOCK[x.product_id] = { left: Number(x.left_qty), own: !!x.own })
   } catch (e) {}
 }
 function openNow(p) {
@@ -106,7 +108,7 @@ function foodMinutes(lines) {
   return t
 }
 setInterval(async () => {
-  if (stockNight()) await loadStock();
+  await loadStock();
   if (!catalogAll.length || catalogAll.filter(openNow).map(p => p.id).join() === hoursKey) return;
   setCatalog(catalogAll);
   try { bundleCatalog = await PIVKA_DB.listBundles(localStorage.getItem('pivka_city')) } catch (e) {}
