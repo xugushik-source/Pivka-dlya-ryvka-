@@ -14,10 +14,10 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.4";
 
 // ---- One place for the model / voice / limits. Override with Supabase secrets of the same name.
 const env = (k: string, d: string) => Deno.env.get(k) || d;
-// Owner, 2026-10-12: cheap model, short talks, anti-chatter. A newcomer (no order from this browser yet) gets one
+// Owner, 2026-10-12: full model for the launch, short talks, anti-chatter. A newcomer (no order from this browser yet) gets one
 // 2-minute talk a day; a customer who already ordered gets 3 an hour, 3 minutes each.
 const CONFIG = {
-  model: env("VOICE_MODEL", "gpt-realtime-2.1-mini"),
+  model: env("VOICE_MODEL", "gpt-realtime-2.1"),
   voice: env("VOICE_VOICE", "marin"),
   transcribeModel: env("VOICE_TRANSCRIBE_MODEL", "gpt-4o-transcribe"),
   perHour: Number(env("VOICE_PER_HOUR", "3")),
