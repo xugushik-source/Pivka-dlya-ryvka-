@@ -151,7 +151,9 @@ const cardText = (o: any) =>
   ((o.from_stock && HINT[o.status + "_STOCK"]) || HINT[o.status] ? `\n\n${(o.from_stock && HINT[o.status + "_STOCK"]) || HINT[o.status]}` : "");
 
 const cb = (act: string, id: string, arg = "") => `c|${act}|${id}${arg ? "|" + arg : ""}`;
-function cardKeyboard(o: any) {
+// A courier group (courier + owner + bot): Telegram allows web_app buttons only in private chats, so there
+// «✏️ Изменить» is a callback that sends the edit button to the private chat of whoever pressed it.
+function cardKeyboard(o: any, chat = 0) {
   const rows: any[] = [];
   if (o.fulfillment_type === "delivery" && o.address_snapshot && ["NEW", "CONFIRMED", "OUT_FOR_DELIVERY"].includes(o.status)) {
     rows.push([{ text: "🗺 Открыть на карте", url: "https://www.google.com/maps/search/?api=1&query=" +
@@ -160,7 +162,7 @@ function cardKeyboard(o: any) {
   if (o.status === "NEW") rows.push([{ text: "✅ Клиент подтвердил — Принят", callback_data: cb("accept", o.id) }]);
   if (o.status === "CONFIRMED") rows.push([{ text: "📦 Собран — забрал заказ", callback_data: cb("ready", o.id) }]);
   if (o.status === "PREPARING") rows.push([{ text: "🛵 Еду", callback_data: cb("go", o.id) }]);
-  if (editable(o)) rows.push([editButton(o)]);
+  if (editable(o)) rows.push([chat < 0 ? { text: "✏️ Изменить заказ", callback_data: cb("ed", o.id) } : editButton(o)]);
   if (o.status === "OUT_FOR_DELIVERY") rows.push([
     { text: "💵 Наличные", callback_data: cb("deliver", o.id, "cash") },
     { text: "💳 Безнал", callback_data: cb("deliver", o.id, "card") },
@@ -323,7 +325,7 @@ async function refreshCourier(cfg: Cfg, o: any) {
   const chat = await chatOf("DRIVER", o.driverId);
   if (!chat) return;
   const { data: m } = await db.from("telegram_messages").select("message_id").eq("order_id", o.id).eq("kind", "DRIVER_OFFER").eq("chat_id", chat).maybeSingle();
-  if (m) await quiet(tg(cfg, "editMessageText", { chat_id: chat, message_id: m.message_id, text: cardText(o), parse_mode: "HTML", disable_web_page_preview: true, reply_markup: cardKeyboard(o) }));
+  if (m) await quiet(tg(cfg, "editMessageText", { chat_id: chat, message_id: m.message_id, text: cardText(o), parse_mode: "HTML", disable_web_page_preview: true, reply_markup: cardKeyboard(o, chat) }));
 }
 
 async function onOrderConfirmed(cfg: Cfg, orderId: string) {
@@ -935,14 +937,35 @@ async function onStart(cfg: Cfg, m: any) {
   }
   const group = m.chat.type === "group" || m.chat.type === "supergroup";
   // A supplier may link a private chat or a group (several people of one supplier see the orders and press «Готово»).
-  if (link.kind !== "SUPPLIER" && (link.kind === "SUPPORT") !== group) {
+  // A courier: the group «courier + owner + bot» gets the orders; the courier's private chat is kept as member_id
+  // (the edit page opened from his private chat must still know him).
+  if (link.kind !== "SUPPLIER" && link.kind !== "DRIVER" && (link.kind === "SUPPORT") !== group) {
     await tg(cfg, "sendMessage", { chat_id: m.chat.id, text: link.kind === "SUPPORT" ? "Эта ссылка — для группы чатов с клиентами." : "Эта ссылка — для личного чата с ботом." });
     return;
   }
-  await db.from("telegram_links").update({
-    chat_id: m.chat.id, tg_username: m.from?.username || null, linked_at: new Date().toISOString(),
-  }).eq("id", link.id);
-  await tg(cfg, "sendMessage", { chat_id: m.chat.id, text: WELCOME[link.kind](link.label || ""), parse_mode: "HTML",
+  if (link.kind === "DRIVER" && !group) {
+    const { data: cur } = await db.from("telegram_links").select("chat_id").eq("id", link.id).maybeSingle();
+    const inGroup = Number(cur?.chat_id) < 0;
+    await db.from("telegram_links").update({
+      member_id: m.chat.id, tg_username: m.from?.username || null,
+      ...(inGroup ? {} : { chat_id: m.chat.id, linked_at: new Date().toISOString() }),
+    }).eq("id", link.id);
+    if (inGroup) {
+      await tg(cfg, "sendMessage", { chat_id: m.chat.id, text: "✅ Готово! Заказы приходят в вашу группу с владельцем, а сюда — кнопка «✏️ Изменить заказ», когда нажмёте её в группе." });
+      return;
+    }
+  } else {
+    // A courier who was linked in private before: that private chat becomes member_id.
+    const { data: cur } = link.kind === "DRIVER" ? await db.from("telegram_links").select("chat_id,member_id").eq("id", link.id).maybeSingle() : { data: null };
+    await db.from("telegram_links").update({
+      chat_id: m.chat.id, linked_at: new Date().toISOString(),
+      ...(link.kind === "DRIVER" ? (Number(cur?.chat_id) > 0 && !cur?.member_id ? { member_id: cur!.chat_id } : {}) : { tg_username: m.from?.username || null }),
+    }).eq("id", link.id);
+  }
+  const welcome = link.kind === "DRIVER" && group
+    ? `✅ Группа курьера${link.label ? " «" + esc(link.label) + "»" : ""} подключена! Сюда будут приходить новые заказы. Нажимать кнопки могут и курьер, и владелец.\nКурьеру: откройте один раз личный чат с ботом по той же ссылке — для кнопки «✏️ Изменить заказ».`
+    : WELCOME[link.kind](link.label || "");
+  await tg(cfg, "sendMessage", { chat_id: m.chat.id, text: welcome, parse_mode: "HTML",
     ...(link.kind === "OWNER" ? { reply_markup: OWNER_MENU } : {}) });
   if (link.kind === "SUPPORT" && !m.chat.is_forum) {
     await quiet(tg(cfg, "sendMessage", { chat_id: m.chat.id, text: "⚠️ Включите в настройках группы «Темы» (Topics) и сделайте бота администратором с правом «Управление темами» — тогда у каждого клиента будет своя тема." }));
@@ -993,8 +1016,17 @@ async function onCallback(cfg: Cfg, q: any) {
   if (act === "cm") { await quiet(tg(cfg, "editMessageReplyMarkup", { chat_id: chat, message_id: msg, reply_markup: reasonsKeyboard(id) })); return answer("Почему отменяем?"); }
   if (act === "bk") {
     const o = await loadOrder(id);
-    await quiet(tg(cfg, "editMessageReplyMarkup", { chat_id: chat, message_id: msg, reply_markup: cardKeyboard(o) }));
+    await quiet(tg(cfg, "editMessageReplyMarkup", { chat_id: chat, message_id: msg, reply_markup: cardKeyboard(o, chat) }));
     return answer();
+  }
+
+  if (act === "ed") {
+    const o = await loadOrder(id);
+    if (!editable(o)) return answer(`Заказ ${STATE[o.status] || o.status} — менять уже нельзя`, true);
+    try {
+      await tg(cfg, "sendMessage", { chat_id: q.from.id, text: `✏️ Заказ №${o.order_number} — откройте и измените:`, reply_markup: { inline_keyboard: [[editButton(o)]] } });
+      return answer("Кнопка — в личном чате с ботом");
+    } catch { return answer("Сначала откройте личный чат с ботом (нажмите Start), потом снова «Изменить».", true); }
   }
 
   const { data: r, error } = await db.rpc("tg_courier", { p_chat: chat, p_order: id, p_action: act, p_arg: arg || null });
@@ -1006,13 +1038,18 @@ async function onCallback(cfg: Cfg, q: any) {
     return answer(`Уже взял ${r.by}`);
   }
   if (r?.error === "state") {
-    await quiet(tg(cfg, "editMessageText", { chat_id: chat, message_id: msg, text: cardText(o), parse_mode: "HTML", reply_markup: o.driverId ? cardKeyboard(o) : undefined }));
+    await quiet(tg(cfg, "editMessageText", { chat_id: chat, message_id: msg, text: cardText(o), parse_mode: "HTML", reply_markup: o.driverId ? cardKeyboard(o, chat) : undefined }));
     return answer(`Заказ ${STATE[r.status] || r.status}`, true);
   }
   if (r?.error) return answer(ERR[r.error] || "Не получилось", true);
 
   // Success: this courier's card shows the current step; the owner's copy gets the new status.
-  await quiet(tg(cfg, "editMessageText", { chat_id: chat, message_id: msg, text: cardText(o), parse_mode: "HTML", disable_web_page_preview: true, reply_markup: cardKeyboard(o) }));
+  await quiet(tg(cfg, "editMessageText", { chat_id: chat, message_id: msg, text: cardText(o), parse_mode: "HTML", disable_web_page_preview: true, reply_markup: cardKeyboard(o, chat) }));
+  // The owner pressed in the courier's group: the order goes on as the courier's, the group sees who pressed.
+  if (chat < 0 && q.from?.id && await isOwnerChat(q.from.id)) {
+    const did: Record<string, string> = { take: "🙋 Беру", accept: "✅ Принят", ready: "📦 Собран", go: "🛵 Еду", deliver: "✅ Доставлен", cancel: "❌ Отменить" };
+    await quiet(tg(cfg, "sendMessage", { chat_id: chat, text: `👤 Владелец нажал «${did[act] || act}» по заказу №${o.order_number}.` }));
+  }
   if (act === "take") {
     const { data: offers } = await db.from("telegram_messages").select("chat_id,message_id").eq("order_id", id).eq("kind", "DRIVER_OFFER");
     for (const m of offers || []) {
