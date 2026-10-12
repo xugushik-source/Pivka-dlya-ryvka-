@@ -14,8 +14,8 @@
       hint: 'Например: «Нас шестеро, бюджет 150 лари, пиво и закуска»', changeHint: 'Скажи или напиши, что поменять: «без рыбы», «пива побольше», «бюджет 100»',
       err: {
         mic_denied: 'Микрофон не разрешён — можно писать.', not_configured: 'Голосовой продавец ещё не включён — пиши, соберу по тексту.',
-        daily_limit: 'Я на сегодня наговорился, голос сел 🥲 Собери сам — там всё просто, а завтра поболтаем.', rate_limit: 'Брат, дай отдышаться минутку 😅 Или собери сам.',
-        new_limit: 'Я на сегодня наговорился, голос сел 🥲 Собери сам — там всё просто, а завтра поболтаем.',
+        daily_limit: 'Я на сегодня наговорилась, голос сел 🥲 Собери сам — там всё просто, а завтра поболтаем.', rate_limit: 'Дай отдышаться минутку 😅 Или собери сам.',
+        new_limit: 'Я на сегодня наговорилась, голос сел 🥲 Собери сам — там всё просто, а завтра поболтаем.',
         openai_quota: 'Голосовой продавец сейчас недоступен — пиши или собери сам.', network: 'Нет связи с продавцом — пиши или собери сам.',
         connection: 'Связь оборвалась. Нажми ещё раз.', default: 'Не получилось подключиться — пиши или собери обычным способом.', no_webrtc: 'Этот браузер не поддерживает голос — пиши.',
       },
@@ -30,7 +30,7 @@
       hint: 'მაგალითად: „ექვსნი ვართ, ბიუჯეტი 150 ლარია, ლუდი და მისაყოლებელი“', changeHint: 'თქვი ან დაწერე, რა შევცვალო: „თევზის გარეშე“, „მეტი ლუდი“, „ბიუჯეტი 100“',
       err: {
         mic_denied: 'მიკროფონი არ არის ნებადართული — შეგიძლია დაწერო.', not_configured: 'ხმოვანი გამყიდველი ჯერ არ არის ჩართული — დაწერე, ტექსტით შეგირჩევ.',
-        daily_limit: 'დღეს ბევრი ვილაპარაკე, ხმა ჩამიჯდა 🥲 თავად ააწყე — მარტივია, ხვალ ვისაუბროთ.', rate_limit: 'ძმაო, ერთი წუთით ამოვისუნთქო 😅 ან თავად ააწყე.',
+        daily_limit: 'დღეს ბევრი ვილაპარაკე, ხმა ჩამიჯდა 🥲 თავად ააწყე — მარტივია, ხვალ ვისაუბროთ.', rate_limit: 'ერთი წუთით ამოვისუნთქო 😅 ან თავად ააწყე.',
         new_limit: 'დღეს ბევრი ვილაპარაკე, ხმა ჩამიჯდა 🥲 თავად ააწყე — მარტივია, ხვალ ვისაუბროთ.',
         openai_quota: 'ხმოვანი გამყიდველი ახლა მიუწვდომელია — დაწერე ან თავად ააწყე.', network: 'გამყიდველთან კავშირი არ არის — დაწერე ან თავად ააწყე.',
         connection: 'კავშირი გაწყდა. კიდევ დააჭირე.', default: 'დაკავშირება ვერ მოხერხდა — დაწერე ან ჩვეულებრივად ააწყე.', no_webrtc: 'ეს ბრაუზერი ხმას არ უჭერს მხარს — დაწერე.',
@@ -46,7 +46,7 @@
       hint: 'Օրինակ՝ «Վեց հոգի ենք, բյուջեն 150 լարի է, գարեջուր և խորտիկ»', changeHint: 'Ասա կամ գրիր՝ ինչ փոխել. «առանց ձկան», «ավելի շատ գարեջուր», «բյուջե 100»',
       err: {
         mic_denied: 'Խոսափողը թույլատրված չէ — կարող ես գրել։', not_configured: 'Ձայնային վաճառողը դեռ միացված չէ — գրիր, կհավաքեմ տեքստով։',
-        daily_limit: 'Այսօր շատ խոսեցի, ձայնս նստեց 🥲 Ինքդ հավաքիր — հեշտ է, վաղը կխոսենք։', rate_limit: 'Ախպեր, մի րոպե շունչ քաշեմ 😅 Կամ ինքդ հավաքիր։',
+        daily_limit: 'Այսօր շատ խոսեցի, ձայնս նստեց 🥲 Ինքդ հավաքիր — հեշտ է, վաղը կխոսենք։', rate_limit: 'Մի րոպե շունչ քաշեմ 😅 Կամ ինքդ հավաքիր։',
         new_limit: 'Այսօր շատ խոսեցի, ձայնս նստեց 🥲 Ինքդ հավաքիր — հեշտ է, վաղը կխոսենք։',
         openai_quota: 'Ձայնային վաճառողը հիմա հասանելի չէ — գրիր կամ ինքդ հավաքիր։', network: 'Վաճառողի հետ կապ չկա — գրիր կամ ինքդ հավաքիր։',
         connection: 'Կապը կտրվեց։ Կրկին սեղմիր։', default: 'Չհաջողվեց միանալ — գրիր կամ հավաքիր սովորական ձևով։', no_webrtc: 'Այս դիտարկիչը ձայն չի աջակցում — գրիր։',
@@ -80,6 +80,7 @@
 .vreco{background:#14181a;border:1px solid #ffb51b66;border-radius:14px;padding:10px 12px;margin:8px 0}
 .vreco .line{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px solid #23292c;font-size:14px}.vreco .line:first-child{border-top:0}
 .vreco .sum{display:flex;justify-content:space-between;font-weight:1000;margin-top:6px}
+.vcartbox{border-color:#3ecf8e88}.vcartbox .vct{font-weight:900;font-size:13px;color:#3ecf8e;margin-bottom:2px}.vcartbox .vct+.line{border-top:0}
 .vbtns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}.vbtns button{border-radius:12px;padding:11px;font-weight:900;border:1px solid #3a4145;background:#1b2022;color:#fff}
 .vbtns .yes{background:#ffb51b;color:#171000;border-color:#ffb51b}.vbtns .end{grid-column:1/-1;background:transparent;color:#a9afb3}
 .vtext{display:flex;gap:8px;margin-top:6px}.vtext input{flex:1;min-width:0}.vtext button{border-radius:12px;padding:0 14px;font-weight:900;background:#ffb51b;color:#171000;border:0}
@@ -106,6 +107,7 @@
 <div class="vmsg" id="vUser" hidden><small id="vUserL"></small><span></span></div>
 <div class="vmsg" id="vSeller" hidden><small id="vSellerL"></small><span></span></div>
 <div class="vreco" id="vReco" hidden></div>
+<div class="vreco vcartbox" id="vCartBox" hidden></div>
 <div class="vbtns"><button type="button" class="yes" id="vAdd" hidden></button><button type="button" id="vChange" hidden></button><button type="button" id="vCart"></button><button type="button" class="end" id="vEnd"></button></div>
 <form class="vtext" id="vForm" autocomplete="off"><input id="vInput" maxlength="300" enterkeyhint="send"><button type="submit" id="vSend"></button></form>
 <button type="button" class="vfall" id="vFall" hidden></button></div>`;
@@ -153,6 +155,7 @@
     try { window.PIVKA_DB && PIVKA_DB.trackEvent('voice_open', { metadata: { lang: L() } }) } catch (e) {}
     if (typeof openSheet === 'function') openSheet('voiceOverlay'); else $('voiceOverlay').classList.add('on');
     paint();
+    syncCart();
     if (!window.RTCPeerConnection || !navigator.mediaDevices) { goLocal('no_webrtc'); return }
     if (mode === 'ai' && !PivkaVoiceAgent.active()) startAI(true);
   }
@@ -199,6 +202,22 @@
   function showSeller(v) { const b = $('vSeller'); b.hidden = !v; b.querySelector('span').textContent = v || '' }
 
   let lastReco = null;
+  // What is really in the cart right now (after the seller added / removed / changed something).
+  const IN_CART = { ru: '🛒 В корзине', ka: '🛒 კალათაში', hy: '🛒 Զամբյուղում' };
+  function renderCartBox(v) {
+    const box = $('vCartBox'), btn = $('vCart');
+    const items = (v && v.items) || [];
+    const lit = L() === 'ka' ? ' ლ' : L() === 'hy' ? ' լ' : ' л';
+    if (!items.length && !(v && v.bundle)) { box.hidden = true; btn.textContent = t().cart; return }
+    box.innerHTML = `<div class="vct">${IN_CART[L()] || IN_CART.ru}</div>` +
+      (v.bundle ? `<div class="line"><span>${esc(v.bundle.name)}</span><b>${money(v.bundle.price)}</b></div>` : '') +
+      items.map((i) => `<div class="line"><span>${esc(i.name)} × ${i.quantity}${i.unit === 'L' ? lit : ''}</span><b>${money(i.sum)}</b></div>`).join('') +
+      `<div class="sum"><span>${esc(t().total)}</span><span>${money(v.total)}</span></div>`;
+    box.hidden = false;
+    btn.textContent = t().cart + ' · ' + money(v.total);
+  }
+  function syncCart() { try { PivkaVoiceTools.run('get_cart', {}).then((r) => renderCartBox(r && (r.cart || r))).catch(() => {}) } catch (e) {} }
+
   function renderReco(r) {
     lastReco = r;
     const box = $('vReco');
@@ -233,7 +252,10 @@
     PivkaVoiceAgent.on('error', (code) => { errCode = code; paint() });
     PivkaVoiceTools.onChange((ev) => {
       if (ev.type === 'recommendation') renderReco(ev.reco);
-      if (ev.type === 'cart' && ev.kind === 'voice_add_to_cart' && lastReco) { $('vAdd').hidden = true }
+      if (ev.type === 'cart') {
+        renderCartBox(ev.cart);
+        if (lastReco) { $('vAdd').hidden = true; $('vChange').hidden = true; $('vReco').hidden = true } // the suggestion is in the cart now
+      }
       if (ev.type === 'checkout') { PivkaVoiceAgent.stop('checkout'); if (typeof closeSheet === 'function') closeSheet('voiceOverlay') }
     });
     texts();

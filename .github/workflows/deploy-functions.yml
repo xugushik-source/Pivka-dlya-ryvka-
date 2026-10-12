@@ -1,11 +1,11 @@
-# Deploys the Telegram bot (Supabase edge function «telegram») when it changes on main, or by hand:
+# Deploys the Telegram bot («telegram») and the voice seller («voice-session») edge functions when they change on main, or by hand:
 # Actions → Deploy edge functions → Run workflow.
 # Needs the repository secret SUPABASE_ACCESS_TOKEN (Supabase → Account → Access Tokens); without it the job is skipped.
 name: Deploy edge functions
 on:
   push:
     branches: [main]
-    paths: ['supabase/functions/telegram/**']
+    paths: ['supabase/functions/telegram/**', 'supabase/functions/voice-session/**']
   workflow_dispatch:
 concurrency: deploy-functions
 jobs:
@@ -31,7 +31,8 @@ jobs:
           # telegram checks its callers itself (webhook secret / internal secret / staff JWT / Mini App initData) → no JWT check.
           set -o pipefail
           # The error is also written as an annotation, so it can be read without opening the raw log.
-          if ! supabase functions deploy telegram --project-ref "$PROJECT_REF" --no-verify-jwt --use-api --debug 2>&1 | tee out.txt; then
+          # voice-session checks the origin and its own limits; the browser calls it with the anon key only → no JWT check either.
+          if ! { supabase functions deploy telegram --project-ref "$PROJECT_REF" --no-verify-jwt --use-api --debug && supabase functions deploy voice-session --project-ref "$PROJECT_REF" --no-verify-jwt --use-api --debug; } 2>&1 | tee out.txt; then
             echo "::error title=Deploy failed::$(grep -v '^$' out.txt | tail -n 25 | sed 's/sbp_[A-Za-z0-9_]*/sbp_***/g' | sed ':a;N;$!ba;s/\n/%0A/g')"
             exit 1
           fi
