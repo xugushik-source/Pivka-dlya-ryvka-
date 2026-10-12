@@ -328,6 +328,21 @@ async function refreshCourier(cfg: Cfg, o: any) {
   if (m) await quiet(tg(cfg, "editMessageText", { chat_id: chat, message_id: m.message_id, text: cardText(o), parse_mode: "HTML", disable_web_page_preview: true, reply_markup: cardKeyboard(o, chat) }));
 }
 
+// A supplier's «Готово» arrives as a new message; the card with the buttons must not stay buried above it:
+// the card is sent again at the bottom of the chat (with the note) and the old one is deleted.
+async function moveCourierCard(cfg: Cfg, o: any, note: string) {
+  const chat = await chatOf("DRIVER", o.driverId);
+  if (!chat) return;
+  const { data: m } = await db.from("telegram_messages").select("id,message_id").eq("order_id", o.id).eq("kind", "DRIVER_OFFER").eq("chat_id", chat).maybeSingle();
+  try {
+    const sent = await tg(cfg, "sendMessage", { chat_id: chat, text: note + "\n\n" + cardText(o), parse_mode: "HTML", disable_web_page_preview: true, reply_markup: cardKeyboard(o, chat) });
+    if (m) {
+      await db.from("telegram_messages").update({ message_id: sent.message_id }).eq("id", m.id);
+      await quiet(tg(cfg, "deleteMessage", { chat_id: chat, message_id: m.message_id }));
+    } else await remember(o.id, chat, sent.message_id, "DRIVER_OFFER");
+  } catch (e) { console.error("move card", e); await refreshCourier(cfg, o); }
+}
+
 async function onOrderConfirmed(cfg: Cfg, orderId: string) {
   const o = await loadOrder(orderId);
   let sent = 0;
@@ -454,14 +469,14 @@ async function onSupplierCallback(cfg: Cfg, q: any, act: string, id: string, arg
   await quiet(tg(cfg, "editMessageText", { chat_id: chat, message_id: msg, text: supplierText(o, sid), parse_mode: "HTML", reply_markup: supplierKeyboard(o, sid) }));
   const driverChat = await chatOf("DRIVER", o.driverId);
   if (act === "ready") {
-    if (driverChat) await quiet(tg(cfg, "sendMessage", { chat_id: driverChat, text: `✅ ${esc(r.supplier)}: заказ №${o.order_number} готов — можно забирать.`, parse_mode: "HTML" }));
+    if (driverChat) await moveCourierCard(cfg, o, `✅ <b>${esc(r.supplier)}</b>: заказ №${o.order_number} готов — можно забирать.`);
   } else {
     const warn = `⚠️ У <b>${esc(r.supplier)}</b> нет: ${esc(item.name_snapshot)} (заказ №${o.order_number}). Позвоните клиенту и предложите замену.`;
     if (driverChat) await quiet(tg(cfg, "sendMessage", { chat_id: driverChat, text: warn, parse_mode: "HTML" }));
     await sendToKind(cfg, "OWNER", warn);
   }
   await refreshOwner(cfg, o);
-  await refreshCourier(cfg, o);
+  if (act !== "ready" || !driverChat) await refreshCourier(cfg, o); // «Готово» already re-sent the card with its note
   return answer(act === "ready" ? "Отмечено: готово" : "Курьер и владелец предупреждены");
 }
 
