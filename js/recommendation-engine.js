@@ -26,10 +26,10 @@
     (list || []).forEach((c) => { if (c === 'strong' || c === 'alcohol_strong') STRONG.forEach((x) => s.add(x)); else s.add(String(c)) });
     return s;
   };
-  // Grill menu by name: how many people one item feeds, and the order a company likes them in.
+  // Grill menu by name: how many people one item feeds (every skewer is one person's portion), and the order a company likes them in.
   const GRILL = [
-    [/мякот/i, 1, 'meat'], [/чалагач|корейк/i, 1, 'meat'], [/кебаб|люля/i, 0.7, 'meat'], [/грудк/i, 0.8, 'meat'],
-    [/окороч/i, 1, 'meat'], [/крыл/i, 0.6, 'meat'], [/картош/i, 0.7, 'meat'],
+    [/мякот/i, 1, 'meat'], [/чалагач|корейк/i, 1, 'meat'], [/кебаб|люля/i, 1, 'meat'], [/грудк/i, 1, 'meat'],
+    [/голен|окороч/i, 1, 'meat'], [/крыл/i, 1, 'meat'], [/картош/i, 1, 'meat'],
     [/салат/i, 3, 'salad'], [/овощ/i, 5, 'veg'],
   ];
   const grillKind = (p) => { const g = GRILL.find(([re]) => re.test(p.name || '')); return g ? { feeds: g[1], kind: g[2], rank: GRILL.indexOf(g) } : null };
