@@ -6,6 +6,7 @@
   const L = () => (document.documentElement.lang || 'ru');
   const TXT = {
     ru: {
+      note: 'У меня на тебя пара минут — я тут всем нравлюсь 😉 Не успеем — допиши текстом или собери сам.',
       cta: 'Поговори с официанткой', ctaSub: 'Скажи, что хочешь — я слушаю', title: 'Официантка «Пивка для рывка»',
       ready: 'Нажми и говори', connecting: 'Подхожу к столику…', listening: 'Говори, я тебя слушаю', thinking: 'Подбираю…', speaking: 'Отвечаю…', reconnecting: 'Связь пропала, восстанавливаю…',
       ready_text: 'Напиши, что нужно', closed: 'Нажми и говори', local: 'Голосом сейчас не получится — пиши, соберу по тексту',
@@ -22,6 +23,7 @@
       fallback: 'Продолжить обычным способом',
     },
     ka: {
+      note: 'შენთვის რამდენიმე წუთი მაქვს — აქ ყველას მოვწონვარ 😉 თუ ვერ მოვასწრებთ, დაწერე ან თავად ააწყე.',
       cta: 'დაელაპარაკე მიმტანს', ctaSub: 'თქვი, რა გინდა — გისმენ', title: 'მიმტანი „ლუდი გაქანებისთვის“',
       ready: 'დააჭირე და ილაპარაკე', connecting: 'მაგიდასთან მოვდივარ…', listening: 'ილაპარაკე, გისმენ', thinking: 'ვარჩევ…', speaking: 'გპასუხობ…', reconnecting: 'კავშირი გაწყდა, ვაღდგენ…',
       ready_text: 'დაწერე, რა გჭირდება', closed: 'დააჭირე და ილაპარაკე', local: 'ხმით ახლა ვერ გამოვა — დაწერე, ტექსტით შეგირჩევ',
@@ -38,6 +40,7 @@
       fallback: 'ჩვეულებრივად გაგრძელება',
     },
     hy: {
+      note: 'Քեզ համար մի քանի րոպե ունեմ — այստեղ բոլորին դուր եմ գալիս 😉 Չհասցնենք՝ գրիր կամ ինքդ հավաքիր։',
       cta: 'Խոսիր մատուցողուհու հետ', ctaSub: 'Ասա՝ ինչ ես ուզում — լսում եմ', title: 'Մատուցողուհի «Գարեջուր լավ երեկոյի համար»',
       ready: 'Սեղմիր և խոսիր', connecting: 'Գալիս եմ սեղանիդ…', listening: 'Խոսիր, լսում եմ քեզ', thinking: 'Ընտրում եմ…', speaking: 'Պատասխանում եմ…', reconnecting: 'Կապը կտրվեց, վերականգնում եմ…',
       ready_text: 'Գրիր՝ ինչ է պետք', closed: 'Սեղմիր և խոսիր', local: 'Ձայնով հիմա չի ստացվի — գրիր, կհավաքեմ տեքստով',
@@ -87,7 +90,7 @@
 .vbig .vface{border-width:3px}.vbig.on .vface{border-color:#22a447}.vbig.on{animation:vgreen 1.6s infinite}.vbig.on .vbadge{background:#22a447;color:#fff}
 .vbig.talk .vface{border-color:#ffb51b;box-shadow:0 0 0 4px #ffb51b44}.vbig.wait .vface{border-color:#5b6367}.vbig.wait .vbadge{background:#3a4145;color:#fff}.vbig[disabled]{opacity:.6}
 @keyframes vgreen{0%{box-shadow:0 0 0 0 #22a44777}70%{box-shadow:0 0 0 14px #22a44700}100%{box-shadow:0 0 0 0 #22a44700}}
-.vstatus{font-weight:900;color:#ffcf6b;text-align:center;min-height:20px}.vhint{color:#a9afb3;font-size:13px;text-align:center}
+.vnote{color:#8b9296;font-size:12px;text-align:center;max-width:300px;line-height:1.35}.vstatus{font-weight:900;color:#ffcf6b;text-align:center;min-height:20px}.vhint{color:#a9afb3;font-size:13px;text-align:center}
 .vmsg{background:#14181a;border:1px solid #272d30;border-radius:14px;padding:10px 12px;margin:8px 0;font-size:14px;line-height:1.4}
 .vmsg small{display:block;color:#8b9296;font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px}
 .vreco{background:#14181a;border:1px solid #ffb51b66;border-radius:14px;padding:10px 12px;margin:8px 0}
@@ -115,7 +118,7 @@
     ov.className = 'overlay'; ov.id = 'voiceOverlay';
     ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true');
     ov.innerHTML = `<div class="sheet"><div class="vtop"><h2 id="vTitle"></h2><button type="button" class="close" aria-label="×" id="vClose">×</button></div>
-<div class="vstage"><button type="button" class="vbig" id="vMic" aria-label="mic">${AVA}</button><div class="vstatus" id="vStatus" aria-live="polite"></div><div class="vhint" id="vHint"></div></div>
+<div class="vstage"><button type="button" class="vbig" id="vMic" aria-label="mic">${AVA}</button><div class="vstatus" id="vStatus" aria-live="polite"></div><div class="vhint" id="vHint"></div><div class="vnote" id="vNote"></div></div>
 <div class="verr" id="vErr" hidden></div>
 <div class="vmsg" id="vUser" hidden><small id="vUserL"></small><span></span></div>
 <div class="vmsg" id="vSeller" hidden><small id="vSellerL"></small><span></span></div>
@@ -142,7 +145,7 @@
     const x = t();
     if (!$('voiceCta')) return;
     $('vCtaT').textContent = x.cta; $('vCtaS').textContent = x.ctaSub;
-    $('vTitle').textContent = x.title; $('vUserL').textContent = x.you; $('vSellerL').textContent = x.seller;
+    $('vTitle').textContent = x.title; $('vNote').textContent = x.note || ''; $('vUserL').textContent = x.you; $('vSellerL').textContent = x.seller;
     $('vAdd').textContent = x.add; $('vChange').textContent = x.change; $('vCart').textContent = x.cart; $('vEnd').textContent = x.end;
     $('vInput').placeholder = x.write; $('vSend').textContent = x.send; $('vFall').textContent = x.fallback;
     if (!$('vHint').dataset.custom) $('vHint').textContent = x.hint;
