@@ -17,6 +17,11 @@
   const findP = (id) => (ID.test(String(id || '')) ? catalog.find((p) => p.id === id) : null) || null;
   const avail = (p) => p && p.active !== false && Number(p.sale_price) > 0 && !(p.supply_mode === 'OWN_STOCK' && Number(p.available_stock || 0) <= 0);
   const fail = (code, extra) => ({ ok: false, error: code, ...(extra || {}) });
+  // Which product earns the shop more inside its category (rank only — costs never reach the browser).
+  let rankP = null;
+  const profitRank = () => rankP || (rankP = (async () => {
+    try { const r = await PIVKA_DB.client().rpc('reco_rank'); const m = {}; (r.data || []).forEach((x) => { m[x.product_id] = x.rank }); return m } catch (e) { rankP = null; return {} }
+  })());
 
   function legalQty(p, q) {
     q = Number(q);
@@ -103,25 +108,28 @@
       return { bundles: bundleCatalog.filter((b) => b.available !== false).map(bundleView) };
     },
     get_cart() { return cartView() },
-    recommend_cart(args = {}) {
-      const r = PivkaReco.recommend(args || {}, catalog, bundleCatalog);
+    async recommend_cart(args = {}) {
+      const r = PivkaReco.recommend(args || {}, catalog, bundleCatalog, await profitRank());
       r.items = r.items.map((i) => ({ ...i, name: nm(i) }));
-      if (r.upsell) r.upsell.name = nm(r.upsell);
+      if (r.upgrade) { r.upgrade.add = r.upgrade.add.map((i) => ({ ...i, name: nm(i) })); r.upgrade.items = r.upgrade.items.map((i) => ({ ...i, name: nm(i) })) }
       lastReco = r;
       listener({ type: 'recommendation', reco: r });
-      track('voice_recommendation', { metadata: { people: r.people, budget: r.budget, total: r.total, lines: r.items.length, bundle: !!r.bundle } });
-      return { ok: true, ...r, note: 'Not in the cart yet. Ask before apply_recommendation.' };
+      track('voice_recommendation', { metadata: { people: r.people, budget: r.budget, total: r.total, lines: r.items.length, scenario: r.scenario, upgrade: r.upgrade ? r.upgrade.total : null, bundle: !!r.bundle } });
+      // The model gets what to say: the table, the «красивый стол» additions, the bundle alternative.
+      const { upgrade, ...rest } = r;
+      return { ok: true, ...rest, upgrade: upgrade ? { add: upgrade.add, extra: upgrade.extra, total: upgrade.total } : null, note: 'Not in the cart yet. Offer the upgrade once, then apply_recommendation (upgrade:true if they agreed).' };
     },
-    apply_recommendation({ replace } = {}) {
+    apply_recommendation({ replace, upgrade } = {}) {
       if (!lastReco || !lastReco.items.length) return fail('no_recommendation');
       if (replace) Object.keys(cart).forEach((k) => delete cart[k]);
-      for (const i of lastReco.items) {
+      const items = upgrade && lastReco.upgrade ? lastReco.upgrade.items : lastReco.items;
+      for (const i of items) {
         const p = findP(i.product_id);
         if (!avail(p)) continue;
         const q = legalQty(p, (cart[p.id] ? cart[p.id].qty : 0) + Number(i.quantity));
         putP(p, q);
       }
-      track('voice_recommendation_accepted', { metadata: { total: lastReco.total } });
+      track('voice_recommendation_accepted', { metadata: { total: upgrade && lastReco.upgrade ? lastReco.upgrade.total : lastReco.total, upgrade: !!(upgrade && lastReco.upgrade) } });
       return changed('voice_add_to_cart', { from: 'recommendation' });
     },
     add_to_cart({ product_id, quantity }) {

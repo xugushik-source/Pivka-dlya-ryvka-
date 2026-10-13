@@ -197,7 +197,7 @@
       PivkaVoiceAgent.sendText({ ru: 'Да, добавь это в корзину', ka: 'კი, დაამატე კალათაში', hy: 'Այո, ավելացրու զամբյուղ' }[L()] || 'Да, добавь это в корзину');
       return;
     }
-    PivkaVoiceTools.run('apply_recommendation', { replace: true }).then((r) => { if (r.ok) showSeller({ ru: 'Добавил. В корзине ', ka: 'დავამატე. კალათაში ', hy: 'Ավելացրի։ Զամբյուղում ' }[L()] + money(r.cart.total)) });
+    PivkaVoiceTools.run('apply_recommendation', { replace: true }).then((r) => { if (r.ok) showSeller({ ru: 'Добавила. В корзине ', ka: 'დავამატე. კალათაში ', hy: 'Ավելացրի։ Զամբյուղում ' }[L()] + money(r.cart.total)) });
   }
   function showUser(v) { const b = $('vUser'); b.hidden = false; b.querySelector('span').textContent = v }
   function showSeller(v) { const b = $('vSeller'); b.hidden = !v; b.querySelector('span').textContent = v || '' }
@@ -225,7 +225,8 @@
     if (!r || !r.items || !r.items.length) { box.hidden = true; $('vAdd').hidden = true; $('vChange').hidden = true; return }
     const nm = (i) => (i.name_i18n && i.name_i18n[L()]) || i.name;
     box.innerHTML = r.items.map((i) => `<div class="line"><span>${esc(nm(i))} × ${i.quantity}${i.unit === 'liter' ? (L() === 'ka' ? ' ლ' : L() === 'hy' ? ' լ' : ' л') : ''}</span><b>${money(i.sum)}</b></div>`).join('') +
-      `<div class="sum"><span>${esc(t().total)}</span><span>${money(r.total)}</span></div>`;
+      `<div class="sum"><span>${esc(t().total)}</span><span>${money(r.total)}</span></div>` +
+      (r.upgrade ? `<div class="line"><span>${esc({ ru: 'Красивый стол: +', ka: 'სრული სუფრა: +', hy: 'Գեղեցիկ սեղան՝ +' }[L()] || '+')}${r.upgrade.add.map((i) => esc(nm(i)) + ' × ' + i.quantity).join(', ')}</span><b>${money(r.upgrade.total)}</b></div>` : '');
     box.hidden = false; $('vAdd').hidden = false; $('vChange').hidden = false;
   }
 
