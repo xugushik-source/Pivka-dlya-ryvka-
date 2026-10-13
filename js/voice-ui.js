@@ -68,7 +68,8 @@
 .voiceCta .vmic{flex:0 0 46px;height:46px;border-radius:50%;display:grid;place-items:center;background:#ffb51b;color:#171000;font-size:22px;box-shadow:0 0 0 0 #ffb51b88;animation:vpulse 2.4s infinite}
 .voiceCta b{display:block;font-size:16px;font-weight:1000}.voiceCta small{display:block;color:#cfd3d6;font-size:13px;margin-top:2px}
 @keyframes vpulse{0%{box-shadow:0 0 0 0 #ffb51b77}70%{box-shadow:0 0 0 12px #ffb51b00}100%{box-shadow:0 0 0 0 #ffb51b00}}
-@media(prefers-reduced-motion:reduce){.voiceCta .vmic,.vbig.on{animation:none}}
+@media(prefers-reduced-motion:reduce){.voiceCta .vmic,.vbig.on{animation:none}
+.vmic .vic{width:26px;height:26px}#bundlesSection .voiceCta{margin-top:12px}}
 #voiceOverlay .sheet{max-height:92vh;overflow:auto}
 .vtop{display:flex;align-items:center;justify-content:space-between;gap:10px}.vtop h2{font-size:18px;margin:0}
 .vstage{display:flex;flex-direction:column;align-items:center;gap:8px;margin:14px 0 8px}
@@ -89,12 +90,12 @@
   }
 
   function build() {
-    const today = $('todaySection');
-    const anchor = today && today.querySelector('.twoCta');
+    // Right under the ready-made «рывки» (index.html #voiceSlot).
+    const anchor = $('voiceSlot') || ($('todaySection') && $('todaySection').querySelector('.twoCta'));
     if (!anchor) return false;
     const cta = document.createElement('button');
     cta.type = 'button'; cta.className = 'voiceCta'; cta.id = 'voiceCta';
-    cta.innerHTML = '<span class="vmic" aria-hidden="true">🎙</span><span><b id="vCtaT"></b><small id="vCtaS"></small></span>';
+    cta.innerHTML = '<span class="vmic" aria-hidden="true"><svg class="vic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M168,64v64a40,40,0,0,1-40,40h0a40,40,0,0,1-40-40V64a40,40,0,0,1,40-40h0A40,40,0,0,1,168,64Z" opacity="0.2"/><path d="M128,176a48.05,48.05,0,0,0,48-48V64a48,48,0,0,0-96,0v64A48.05,48.05,0,0,0,128,176ZM96,64a32,32,0,0,1,64,0v64a32,32,0,0,1-64,0Zm40,143.6V240a8,8,0,0,1-16,0V207.6A80.11,80.11,0,0,1,48,128a8,8,0,0,1,16,0,64,64,0,0,0,128,0,8,8,0,0,1,16,0A80.11,80.11,0,0,1,136,207.6Z"/></svg></span><span><b id="vCtaT"></b><small id="vCtaS"></small></span>';
     cta.onclick = open;
     cta.hidden = true; // shown only when the voice seller really works (see available())
     anchor.insertAdjacentElement('afterend', cta);
