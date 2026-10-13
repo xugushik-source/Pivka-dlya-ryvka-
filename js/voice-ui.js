@@ -6,49 +6,52 @@
   const L = () => (document.documentElement.lang || 'ru');
   const TXT = {
     ru: {
-      cta: 'Скажи, что хочешь', ctaSub: 'Я соберу рывок', title: '🎙 Продавец «Пивка для рывка»',
-      ready: 'Нажми и говори', connecting: 'Подключаю продавца…', listening: 'Слушаю…', thinking: 'Подбираю…', speaking: 'Отвечаю…', reconnecting: 'Связь пропала, восстанавливаю…',
-      ready_text: 'Напиши, что нужно', closed: 'Нажми и говори', local: 'Голосовой продавец сейчас недоступен — пиши, соберу по тексту',
-      you: 'Ты', seller: 'Продавец', add: 'Добавить', change: 'Изменить', cart: 'Открыть корзину', end: 'Закончить разговор',
+      note: 'У меня на тебя пара минут — я тут всем нравлюсь 😉 Не успеем — допиши текстом или собери сам.',
+      cta: 'Поговори с Аней', ctaSub: 'Официантка. Скажи, что хочешь — я слушаю', title: 'Аня — официантка «Пивка для рывка»',
+      ready: 'Нажми и говори', connecting: 'Подхожу к столику…', listening: 'Говори, я тебя слушаю', thinking: 'Подбираю…', speaking: 'Отвечаю…', reconnecting: 'Связь пропала, восстанавливаю…',
+      ready_text: 'Напиши, что нужно', closed: 'Нажми и говори', local: 'Голосом сейчас не получится — пиши, соберу по тексту',
+      you: 'Ты', seller: 'Аня', add: 'Добавить', change: 'Изменить', cart: 'Открыть корзину', end: 'Закончить разговор',
       write: 'Или напиши', send: 'Отправить', total: 'Итого', tryAgain: 'Ещё раз',
       hint: 'Например: «Нас шестеро, бюджет 150 лари, пиво и закуска»', changeHint: 'Скажи или напиши, что поменять: «без рыбы», «пива побольше», «бюджет 100»',
       err: {
-        mic_denied: 'Микрофон не разрешён — можно писать.', not_configured: 'Голосовой продавец ещё не включён — пиши, соберу по тексту.',
+        mic_denied: 'Микрофон не разрешён — можно писать.', not_configured: 'Голосом пока не получится — пиши, соберу по тексту.',
         daily_limit: 'Я на сегодня наговорилась, голос сел 🥲 Собери сам — там всё просто, а завтра поболтаем.', rate_limit: 'Дай отдышаться минутку 😅 Или собери сам.',
         new_limit: 'Я на сегодня наговорилась, голос сел 🥲 Собери сам — там всё просто, а завтра поболтаем.',
-        openai_quota: 'Голосовой продавец сейчас недоступен — пиши или собери сам.', network: 'Нет связи с продавцом — пиши или собери сам.',
+        openai_quota: 'Голосом сейчас не получится — пиши или собери сам.', network: 'Нет связи с Аней — пиши или собери сам.',
         connection: 'Связь оборвалась. Нажми ещё раз.', default: 'Не получилось подключиться — пиши или собери обычным способом.', no_webrtc: 'Этот браузер не поддерживает голос — пиши.',
       },
       fallback: 'Продолжить обычным способом',
     },
     ka: {
-      cta: 'თქვი, რა გინდა', ctaSub: 'ნაკრებს შეგირჩევ', title: '🎙 გამყიდველი „ლუდი გაქანებისთვის“',
-      ready: 'დააჭირე და ილაპარაკე', connecting: 'გამყიდველს ვუკავშირდები…', listening: 'გისმენ…', thinking: 'ვარჩევ…', speaking: 'გპასუხობ…', reconnecting: 'კავშირი გაწყდა, ვაღდგენ…',
-      ready_text: 'დაწერე, რა გჭირდება', closed: 'დააჭირე და ილაპარაკე', local: 'ხმოვანი გამყიდველი ახლა მიუწვდომელია — დაწერე, ტექსტით შეგირჩევ',
-      you: 'შენ', seller: 'გამყიდველი', add: 'დამატება', change: 'შეცვლა', cart: 'კალათის გახსნა', end: 'საუბრის დასრულება',
+      note: 'შენთვის რამდენიმე წუთი მაქვს — აქ ყველას მოვწონვარ 😉 თუ ვერ მოვასწრებთ, დაწერე ან თავად ააწყე.',
+      cta: 'დაელაპარაკე ანის', ctaSub: 'მიმტანი. თქვი, რა გინდა — გისმენ', title: 'ანი — მიმტანი „ლუდი გაქანებისთვის“',
+      ready: 'დააჭირე და ილაპარაკე', connecting: 'მაგიდასთან მოვდივარ…', listening: 'ილაპარაკე, გისმენ', thinking: 'ვარჩევ…', speaking: 'გპასუხობ…', reconnecting: 'კავშირი გაწყდა, ვაღდგენ…',
+      ready_text: 'დაწერე, რა გჭირდება', closed: 'დააჭირე და ილაპარაკე', local: 'ხმით ახლა ვერ გამოვა — დაწერე, ტექსტით შეგირჩევ',
+      you: 'შენ', seller: 'ანი', add: 'დამატება', change: 'შეცვლა', cart: 'კალათის გახსნა', end: 'საუბრის დასრულება',
       write: 'ან დაწერე', send: 'გაგზავნა', total: 'ჯამი', tryAgain: 'კიდევ ერთხელ',
       hint: 'მაგალითად: „ექვსნი ვართ, ბიუჯეტი 150 ლარია, ლუდი და მისაყოლებელი“', changeHint: 'თქვი ან დაწერე, რა შევცვალო: „თევზის გარეშე“, „მეტი ლუდი“, „ბიუჯეტი 100“',
       err: {
-        mic_denied: 'მიკროფონი არ არის ნებადართული — შეგიძლია დაწერო.', not_configured: 'ხმოვანი გამყიდველი ჯერ არ არის ჩართული — დაწერე, ტექსტით შეგირჩევ.',
+        mic_denied: 'მიკროფონი არ არის ნებადართული — შეგიძლია დაწერო.', not_configured: 'ხმით ჯერ ვერ გამოვა — დაწერე, ტექსტით შეგირჩევ.',
         daily_limit: 'დღეს ბევრი ვილაპარაკე, ხმა ჩამიჯდა 🥲 თავად ააწყე — მარტივია, ხვალ ვისაუბროთ.', rate_limit: 'ერთი წუთით ამოვისუნთქო 😅 ან თავად ააწყე.',
         new_limit: 'დღეს ბევრი ვილაპარაკე, ხმა ჩამიჯდა 🥲 თავად ააწყე — მარტივია, ხვალ ვისაუბროთ.',
-        openai_quota: 'ხმოვანი გამყიდველი ახლა მიუწვდომელია — დაწერე ან თავად ააწყე.', network: 'გამყიდველთან კავშირი არ არის — დაწერე ან თავად ააწყე.',
+        openai_quota: 'ხმით ახლა ვერ გამოვა — დაწერე ან თავად ააწყე.', network: 'ანისთან კავშირი არ არის — დაწერე ან თავად ააწყე.',
         connection: 'კავშირი გაწყდა. კიდევ დააჭირე.', default: 'დაკავშირება ვერ მოხერხდა — დაწერე ან ჩვეულებრივად ააწყე.', no_webrtc: 'ეს ბრაუზერი ხმას არ უჭერს მხარს — დაწერე.',
       },
       fallback: 'ჩვეულებრივად გაგრძელება',
     },
     hy: {
-      cta: 'Ասա՝ ինչ ես ուզում', ctaSub: 'Ես կհավաքեմ հավաքածուն', title: '🎙 Վաճառող «Գարեջուր լավ երեկոյի համար»',
-      ready: 'Սեղմիր և խոսիր', connecting: 'Միացնում եմ վաճառողին…', listening: 'Լսում եմ…', thinking: 'Ընտրում եմ…', speaking: 'Պատասխանում եմ…', reconnecting: 'Կապը կտրվեց, վերականգնում եմ…',
-      ready_text: 'Գրիր՝ ինչ է պետք', closed: 'Սեղմիր և խոսիր', local: 'Ձայնային վաճառողը հիմա հասանելի չէ — գրիր, կհավաքեմ տեքստով',
-      you: 'Դու', seller: 'Վաճառող', add: 'Ավելացնել', change: 'Փոխել', cart: 'Բացել զամբյուղը', end: 'Ավարտել զրույցը',
+      note: 'Քեզ համար մի քանի րոպե ունեմ — այստեղ բոլորին դուր եմ գալիս 😉 Չհասցնենք՝ գրիր կամ ինքդ հավաքիր։',
+      cta: 'Խոսիր Անիի հետ', ctaSub: 'Մատուցողուհի։ Ասա՝ ինչ ես ուզում — լսում եմ', title: 'Անի — մատուցողուհի «Գարեջուր լավ երեկոյի համար»',
+      ready: 'Սեղմիր և խոսիր', connecting: 'Գալիս եմ սեղանիդ…', listening: 'Խոսիր, լսում եմ քեզ', thinking: 'Ընտրում եմ…', speaking: 'Պատասխանում եմ…', reconnecting: 'Կապը կտրվեց, վերականգնում եմ…',
+      ready_text: 'Գրիր՝ ինչ է պետք', closed: 'Սեղմիր և խոսիր', local: 'Ձայնով հիմա չի ստացվի — գրիր, կհավաքեմ տեքստով',
+      you: 'Դու', seller: 'Անի', add: 'Ավելացնել', change: 'Փոխել', cart: 'Բացել զամբյուղը', end: 'Ավարտել զրույցը',
       write: 'Կամ գրիր', send: 'Ուղարկել', total: 'Ընդամենը', tryAgain: 'Կրկին',
       hint: 'Օրինակ՝ «Վեց հոգի ենք, բյուջեն 150 լարի է, գարեջուր և խորտիկ»', changeHint: 'Ասա կամ գրիր՝ ինչ փոխել. «առանց ձկան», «ավելի շատ գարեջուր», «բյուջե 100»',
       err: {
-        mic_denied: 'Խոսափողը թույլատրված չէ — կարող ես գրել։', not_configured: 'Ձայնային վաճառողը դեռ միացված չէ — գրիր, կհավաքեմ տեքստով։',
+        mic_denied: 'Խոսափողը թույլատրված չէ — կարող ես գրել։', not_configured: 'Ձայնով դեռ չի ստացվի — գրիր, կհավաքեմ տեքստով։',
         daily_limit: 'Այսօր շատ խոսեցի, ձայնս նստեց 🥲 Ինքդ հավաքիր — հեշտ է, վաղը կխոսենք։', rate_limit: 'Մի րոպե շունչ քաշեմ 😅 Կամ ինքդ հավաքիր։',
         new_limit: 'Այսօր շատ խոսեցի, ձայնս նստեց 🥲 Ինքդ հավաքիր — հեշտ է, վաղը կխոսենք։',
-        openai_quota: 'Ձայնային վաճառողը հիմա հասանելի չէ — գրիր կամ ինքդ հավաքիր։', network: 'Վաճառողի հետ կապ չկա — գրիր կամ ինքդ հավաքիր։',
+        openai_quota: 'Ձայնով հիմա չի ստացվի — գրիր կամ ինքդ հավաքիր։', network: 'Անիի հետ կապ չկա — գրիր կամ ինքդ հավաքիր։',
         connection: 'Կապը կտրվեց։ Կրկին սեղմիր։', default: 'Չհաջողվեց միանալ — գրիր կամ հավաքիր սովորական ձևով։', no_webrtc: 'Այս դիտարկիչը ձայն չի աջակցում — գրիր։',
       },
       fallback: 'Շարունակել սովորական ձևով',
@@ -58,14 +61,24 @@
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const money = (n) => Number(n).toFixed(2).replace('.00', '') + ' ₾';
   let mode = 'ai'; // 'ai' | 'local' (no AI: the text field is understood by PivkaVoiceLocal)
-  let state = 'closed', errCode = null;
+  let state = 'closed', errCode = null, lastPainted = null;
   const $ = (id) => document.getElementById(id);
+
+  // The waitress (the girl from the QR teaser) with a small mic badge; she winks now and then.
+  const MIC = '<svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M128,176a48.05,48.05,0,0,0,48-48V64a48,48,0,0,0-96,0v64A48.05,48.05,0,0,0,128,176ZM96,64a32,32,0,0,1,64,0v64a32,32,0,0,1-64,0Zm40,143.6V240a8,8,0,0,1-16,0V207.6A80.11,80.11,0,0,1,48,128a8,8,0,0,1,16,0,64,64,0,0,0,128,0,8,8,0,0,1,16,0A80.11,80.11,0,0,1,136,207.6Z"/></svg>';
+  const AVA = '<span class="vface"><img src="assets/voice/ava.jpg" alt="" decoding="async"><img class="w" src="assets/voice/ava-wink.jpg" alt="" decoding="async"></span><span class="vbadge">' + MIC + '</span>';
+  function wink(el) { if (!el || el.classList.contains('winking')) return; el.classList.add('winking'); setTimeout(() => el.classList.remove('winking'), 1100) }
 
   function css() {
     const st = document.createElement('style');
     st.textContent = `
 .voiceCta[hidden]{display:none}.voiceCta{display:flex;align-items:center;gap:12px;width:100%;margin-top:10px;padding:12px 14px;border-radius:18px;border:2px solid #ffb51b;background:linear-gradient(135deg,#221a06,#15191b);color:#fff;text-align:left;cursor:pointer}
-.voiceCta .vmic{flex:0 0 46px;height:46px;border-radius:50%;display:grid;place-items:center;background:#ffb51b;color:#171000;font-size:22px;box-shadow:0 0 0 0 #ffb51b88;animation:vpulse 2.4s infinite}
+.voiceCta .vmic{position:relative;flex:0 0 58px;height:58px;border-radius:50%;box-shadow:0 0 0 0 #ffb51b88;animation:vpulse 2.4s infinite}
+.vface{position:absolute;inset:0;border-radius:50%;overflow:hidden;border:2px solid #ffb51b;background:#2a2a2a}
+.vface img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:opacity .18s}.vface img.w{opacity:0}
+.winking .vface img.w{opacity:1}.winking .vface img:not(.w){opacity:0}
+.vbadge{position:absolute;right:-3px;bottom:-3px;width:42%;height:42%;min-width:20px;min-height:20px;border-radius:50%;background:#ffb51b;color:#171000;display:grid;place-items:center;border:2px solid #15191b}
+.vbadge svg{width:62%;height:62%}
 .voiceCta b{display:block;font-size:16px;font-weight:1000}.voiceCta small{display:block;color:#cfd3d6;font-size:13px;margin-top:2px}
 @keyframes vpulse{0%{box-shadow:0 0 0 0 #ffb51b77}70%{box-shadow:0 0 0 12px #ffb51b00}100%{box-shadow:0 0 0 0 #ffb51b00}}
 @media(prefers-reduced-motion:reduce){.voiceCta .vmic,.vbig.on{animation:none}
@@ -73,9 +86,11 @@
 #voiceOverlay .sheet{max-height:92vh;overflow:auto}
 .vtop{display:flex;align-items:center;justify-content:space-between;gap:10px}.vtop h2{font-size:18px;margin:0}
 .vstage{display:flex;flex-direction:column;align-items:center;gap:8px;margin:14px 0 8px}
-.vbig{width:86px;height:86px;border-radius:50%;border:0;background:#ffb51b;color:#171000;font-size:36px;cursor:pointer}
-.vbig.on{background:#22a447;color:#fff;animation:vpulse 1.4s infinite}.vbig.wait{background:#3a4145;color:#fff}.vbig[disabled]{opacity:.5}
-.vstatus{font-weight:900;color:#ffcf6b;text-align:center;min-height:20px}.vhint{color:#a9afb3;font-size:13px;text-align:center}
+.vbig{position:relative;width:112px;height:112px;border-radius:50%;border:0;padding:0;background:transparent;cursor:pointer}
+.vbig .vface{border-width:3px}.vbig.on .vface{border-color:#22a447}.vbig.on{animation:vgreen 1.6s infinite}.vbig.on .vbadge{background:#22a447;color:#fff}
+.vbig.talk .vface{border-color:#ffb51b;box-shadow:0 0 0 4px #ffb51b44}.vbig.wait .vface{border-color:#5b6367}.vbig.wait .vbadge{background:#3a4145;color:#fff}.vbig[disabled]{opacity:.6}
+@keyframes vgreen{0%{box-shadow:0 0 0 0 #22a44777}70%{box-shadow:0 0 0 14px #22a44700}100%{box-shadow:0 0 0 0 #22a44700}}
+.vnote{color:#8b9296;font-size:12px;text-align:center;max-width:300px;line-height:1.35}.vstatus{font-weight:900;color:#ffcf6b;text-align:center;min-height:20px}.vhint{color:#a9afb3;font-size:13px;text-align:center}
 .vmsg{background:#14181a;border:1px solid #272d30;border-radius:14px;padding:10px 12px;margin:8px 0;font-size:14px;line-height:1.4}
 .vmsg small{display:block;color:#8b9296;font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px}
 .vreco{background:#14181a;border:1px solid #ffb51b66;border-radius:14px;padding:10px 12px;margin:8px 0}
@@ -95,7 +110,7 @@
     if (!anchor) return false;
     const cta = document.createElement('button');
     cta.type = 'button'; cta.className = 'voiceCta'; cta.id = 'voiceCta';
-    cta.innerHTML = '<span class="vmic" aria-hidden="true"><svg class="vic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M168,64v64a40,40,0,0,1-40,40h0a40,40,0,0,1-40-40V64a40,40,0,0,1,40-40h0A40,40,0,0,1,168,64Z" opacity="0.2"/><path d="M128,176a48.05,48.05,0,0,0,48-48V64a48,48,0,0,0-96,0v64A48.05,48.05,0,0,0,128,176ZM96,64a32,32,0,0,1,64,0v64a32,32,0,0,1-64,0Zm40,143.6V240a8,8,0,0,1-16,0V207.6A80.11,80.11,0,0,1,48,128a8,8,0,0,1,16,0,64,64,0,0,0,128,0,8,8,0,0,1,16,0A80.11,80.11,0,0,1,136,207.6Z"/></svg></span><span><b id="vCtaT"></b><small id="vCtaS"></small></span>';
+    cta.innerHTML = '<span class="vmic" aria-hidden="true">' + AVA + '</span><span><b id="vCtaT"></b><small id="vCtaS"></small></span>';
     cta.onclick = open;
     cta.hidden = true; // shown only when the voice seller really works (see available())
     anchor.insertAdjacentElement('afterend', cta);
@@ -103,7 +118,7 @@
     ov.className = 'overlay'; ov.id = 'voiceOverlay';
     ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true');
     ov.innerHTML = `<div class="sheet"><div class="vtop"><h2 id="vTitle"></h2><button type="button" class="close" aria-label="×" id="vClose">×</button></div>
-<div class="vstage"><button type="button" class="vbig" id="vMic" aria-label="mic">🎙</button><div class="vstatus" id="vStatus" aria-live="polite"></div><div class="vhint" id="vHint"></div></div>
+<div class="vstage"><button type="button" class="vbig" id="vMic" aria-label="mic">${AVA}</button><div class="vstatus" id="vStatus" aria-live="polite"></div><div class="vhint" id="vHint"></div><div class="vnote" id="vNote"></div></div>
 <div class="verr" id="vErr" hidden></div>
 <div class="vmsg" id="vUser" hidden><small id="vUserL"></small><span></span></div>
 <div class="vmsg" id="vSeller" hidden><small id="vSellerL"></small><span></span></div>
@@ -130,7 +145,7 @@
     const x = t();
     if (!$('voiceCta')) return;
     $('vCtaT').textContent = x.cta; $('vCtaS').textContent = x.ctaSub;
-    $('vTitle').textContent = x.title; $('vUserL').textContent = x.you; $('vSellerL').textContent = x.seller;
+    $('vTitle').textContent = x.title; $('vNote').textContent = x.note || ''; $('vUserL').textContent = x.you; $('vSellerL').textContent = x.seller;
     $('vAdd').textContent = x.add; $('vChange').textContent = x.change; $('vCart').textContent = x.cart; $('vEnd').textContent = x.end;
     $('vInput').placeholder = x.write; $('vSend').textContent = x.send; $('vFall').textContent = x.fallback;
     if (!$('vHint').dataset.custom) $('vHint').textContent = x.hint;
@@ -145,7 +160,9 @@
     const mic = $('vMic');
     mic.classList.toggle('on', state === 'listening');
     mic.classList.toggle('wait', state === 'connecting' || state === 'thinking' || state === 'reconnecting');
-    mic.textContent = state === 'speaking' ? '✋' : state === 'connecting' || state === 'thinking' || state === 'reconnecting' ? '…' : '🎙';
+    mic.classList.toggle('talk', state === 'speaking');
+    if (state === 'listening' && lastPainted !== 'listening') wink(mic); // «говори, я тебя слушаю» — with a wink
+    lastPainted = state;
     mic.disabled = mode === 'local' || state === 'connecting' || state === 'reconnecting';
     diagPaint();
     if (errCode) { $('vErr').hidden = false; $('vErr').textContent = x.err[errCode] || x.err.default } else $('vErr').hidden = true;
@@ -278,7 +295,17 @@
       if (ev.type === 'checkout') { PivkaVoiceAgent.stop('checkout'); if (typeof closeSheet === 'function') closeSheet('voiceOverlay') }
     });
     texts();
-    available().then((yes) => { if (yes) $('voiceCta').hidden = false });
+    available().then((yes) => {
+      if (!yes) return;
+      $('voiceCta').hidden = false;
+      // A wink every few seconds on the button; inside the sheet — while she waits for the customer.
+      let calm = false;
+      try { calm = matchMedia('(prefers-reduced-motion: reduce)').matches } catch (e) {}
+      if (!calm) setInterval(() => {
+        if (document.hidden) return;
+        if ($('voiceOverlay').classList.contains('on')) { if (state === 'listening' || state === 'closed') wink($('vMic')) } else wink($('voiceCta'));
+      }, 7000);
+    });
     // follow the site language switch
     new MutationObserver(texts).observe(document.documentElement, { attributes: true, attributeFilter: ['lang'] });
   }
