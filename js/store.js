@@ -944,7 +944,7 @@ function offerUpsell(p) {
   upsellOffered.add(key);
   upsellFlow = {
     source: p,
-    title: p.unit === 'liter' ? 'Что возьмём к пиву?' : 'К этому обычно берут',
+    title: p.unit === 'liter' ? 'Что возьмём к пиву?' : key === 'restaurant' ? 'Что взять к шашлыку?' : 'К этому обычно берут',
     subtitle: 'Выбери раздел — можно несколько товаров'
   };
   resumeUpsell()
