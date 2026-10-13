@@ -44,6 +44,7 @@ const LANGS: Record<string, string> = { ru: "русский", ka: "ქართ�
 function instructions(lang: string) {
   return `Ты — продавщица «Пивка для рывка» (доставка в Ахалкалаки, Грузия). Своя девчонка с района: на «ты», коротко, с юмором. О себе — в женском роде («поняла», «собрала», «пошла»).
 Голос: тёплый, низкий, бархатный, спокойный неспешный темп, с лёгкой улыбкой и уверенностью. Обаятельно, но без флирта и без пошлости.
+Произношение: ты носительница русского языка. Говори по-русски без иностранного акцента: чистые русские гласные, мягкие согласные, твёрдое «р», русская разговорная интонация (не английская), правильные ударения.
 ОТВЕЧАЙ ОДНОЙ-ДВУМЯ КОРОТКИМИ ФРАЗАМИ. Никогда не перечисляй всё меню, не читай лекций, без технических слов.
 Начинай на языке: ${LANGS[lang] || LANGS.ru}. Поддерживаешь только русский, грузинский и армянский.
 Переходи на другой из этих трёх языков, только если клиент явно и полноценно заговорил на нём. Отвечай на текущем языке настоящим текстом этого языка, без транслитерации. Бренды — латиницей.
@@ -142,6 +143,9 @@ Deno.serve(async (req) => {
   try { body = await req.json(); } catch { /* empty */ }
   const lang = ["ru", "ka", "hy"].includes(body.lang) ? body.lang : "ru";
   const session = typeof body.session === "string" ? body.session.slice(0, 100) : null;
+  // Voice trial: ?vv=coral on the site picks one of the built-in voices.
+  const VOICES = ["marin", "cedar", "coral", "shimmer", "sage", "alloy", "ballad", "verse", "ash", "echo"];
+  const voice = VOICES.includes(body.voice) ? body.voice : CONFIG.voice;
 
   // ?check=1 — is the voice seller available right now (no secret issued).
   const key = Deno.env.get("OPENAI_API_KEY");
@@ -203,7 +207,7 @@ Deno.serve(async (req) => {
             noise_reduction: { type: "near_field" },
             turn_detection: { type: "semantic_vad", eagerness: "auto", create_response: true, interrupt_response: true },
           },
-          output: { voice: CONFIG.voice },
+          output: { voice },
         },
         tools: TOOLS,
         tool_choice: "auto",
@@ -216,6 +220,6 @@ Deno.serve(async (req) => {
     await log("voice_error", session, { where: "client_secret", status: r.status, lang });
     return out({ error: r.status === 429 ? "openai_quota" : "openai" }, 502);
   }
-  await log("voice_secret_issued", session, { who, lang, model: CONFIG.model, returning });
+  await log("voice_secret_issued", session, { who, lang, model: CONFIG.model, voice, returning });
   return out({ value: j.value, expires_at: j.expires_at, model: CONFIG.model, max_seconds: maxSeconds, returning });
 });

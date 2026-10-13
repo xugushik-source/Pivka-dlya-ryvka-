@@ -47,7 +47,7 @@
       const r = await fetch(FN(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', apikey: PIVKA_CONFIG.supabaseAnonKey },
-        body: JSON.stringify({ lang, session: sessionId() }),
+        body: JSON.stringify({ lang, session: sessionId(), voice: new URLSearchParams(location.search).get('vv') || undefined }),
       });
       secret = await r.json().catch(() => ({}));
       if (!r.ok || !secret.value) throw Object.assign(new Error(secret.error || 'session'), { code: secret.error || 'session' });
