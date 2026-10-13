@@ -104,6 +104,8 @@
 .feats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
 .feat{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:92px;padding:11px 10px;border-radius:15px;background:#14181a;border:1px solid #2c3336;color:#fff;text-align:left;cursor:pointer}
 .feat .fi{font-size:22px;line-height:1;margin-bottom:4px}
+.ic{width:1em;height:1em;color:#ffb51b;vertical-align:-.14em;flex:none}.feat .fi .ic{width:30px;height:30px}.catchFriend .ic{width:22px;height:22px;margin-right:4px}
+#repeatCard[hidden],.repeatLink[hidden]{display:none}.extras{margin-top:22px}.extras .twoCta{margin-top:12px}.extras .bigcta{min-height:64px;padding:12px 10px;font-size:16px}
 .feat b{font-size:14px;line-height:1.1}
 .feat small{font-size:11px;color:#a9b0b3;line-height:1.25}
 .repeatLink{margin-top:10px;width:100%;background:none;border:1px dashed #3a4145;color:#ffcf6b;border-radius:13px;padding:11px;font-weight:800}
@@ -196,33 +198,25 @@
 </header>
 
 <section class="block today" id="todaySection">
-<h2 class="sec-title"><span class="mask"><span>Что сегодня за рывок?</span></span></h2>
 <div id="orderTrack" class="trackCard" hidden aria-live="polite"></div>
-<div class="twoCta"><button type="button" class="bigcta primary" onclick="goBundles()"><span>🔥</span>ВЗЯТЬ ГОТОВЫЙ</button><button type="button" class="bigcta secondary" onclick="goBuild()"><span>🧺</span>СОБРАТЬ СВОЙ</button></div>
-<div class="feats">
-<button type="button" class="feat" onclick="openSocial('TREAT')"><span class="fi">🎁</span><b>Угости друга</b><small>Ты платишь — мы везём другу</small></button>
-<button type="button" class="feat" onclick="openSocial('BET')"><span class="fi">🍺</span><b>Спорим на пиво?</b><small>Проигравший платит</small></button>
-<button type="button" class="feat" onclick="openPass()"><span class="fi">👑</span><b>PASS</b><small>Доставка 0 ₾ от 30 ₾ · от 20 ₾/мес</small></button>
-</div>
-<!-- Street QR viral loop: only for people who already fell for the teaser (/qr/). Not «Угости друга». -->
-<button type="button" class="catchFriend" id="catchFriend" hidden onclick="catchFriend()"><span>😏 ПОДЛОВИ ДРУГА</span><small>Отправь ему тот же прикол</small></button>
 </section>
 
 <section class="block" id="bundlesSection">
 <div class="sec-head"><h2 class="sec-title"><span class="mask"><span>Готовые рывки</span></span></h2><p class="muted">Уже всё подобрали — быстрее и выгоднее</p></div>
 <div class="bundles" id="bundles"><div class="empty">Загружаем рывки…</div></div>
+<div id="voiceSlot"></div>
 <button type="button" class="notyours" onclick="goBuild()">Не твой рывок? <b>Собери свой →</b></button>
 <!-- Last order goes after the ready-made «рывки»: those come first, right after Угости / Спорим / PASS. -->
 <div id="lastOrder" class="trackCard" hidden></div>
-<button type="button" class="repeatLink" id="repeatQuick" onclick="openRepeat()">🔁 Повторить прошлый заказ →</button>
+<button type="button" class="repeatLink" id="repeatQuick" hidden onclick="openRepeat()">🔁 Повторить прошлый заказ →</button>
 </section>
 
 <section class="block" id="buildSection">
 <div class="sec-head"><h2 class="sec-title"><span class="mask"><span>Собрать свой рывок</span></span></h2><p class="muted">Сначала выпивка — закуску подскажем</p></div>
 <div class="hours-note" id="hoursNote" hidden></div>
-<div class="step-head">1 · Выпивка</div>
+<div class="step-head">Главное</div>
 <div class="tiles alc" id="tilesAlc"></div>
-<div class="step-head">2 · Закуска</div>
+<div class="step-head">К столу</div>
 <div class="tiles" id="tilesFood"></div>
 <div class="more-head" id="moreHead">Ещё к столу</div>
 <div class="tiles small" id="tilesMore"></div>
@@ -238,10 +232,20 @@
 
 <section class="gift" id="giftBlock" aria-live="polite"></section>
 
+<section class="block extras" id="extrasSection">
+<div class="feats">
+<button type="button" class="feat" onclick="openSocial('TREAT')"><span class="fi"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M208,128v72a8,8,0,0,1-8,8H56a8,8,0,0,1-8-8V128Z" opacity="0.2"/><path d="M216,72H180.92c.39-.33.79-.65,1.17-1A29.53,29.53,0,0,0,192,49.57,32.62,32.62,0,0,0,158.44,16,29.53,29.53,0,0,0,137,25.91a54.94,54.94,0,0,0-9,14.48,54.94,54.94,0,0,0-9-14.48A29.53,29.53,0,0,0,97.56,16,32.62,32.62,0,0,0,64,49.57,29.53,29.53,0,0,0,73.91,71c.38.33.78.65,1.17,1H40A16,16,0,0,0,24,88v32a16,16,0,0,0,16,16v64a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V136a16,16,0,0,0,16-16V88A16,16,0,0,0,216,72ZM149,36.51a13.69,13.69,0,0,1,10-4.5h.49A16.62,16.62,0,0,1,176,49.08a13.69,13.69,0,0,1-4.5,10c-9.49,8.4-25.24,11.36-35,12.4C137.7,60.89,141,45.5,149,36.51Zm-64.09.36A16.63,16.63,0,0,1,96.59,32h.49a13.69,13.69,0,0,1,10,4.5c8.39,9.48,11.35,25.2,12.39,34.92-9.72-1-25.44-4-34.92-12.39a13.69,13.69,0,0,1-4.5-10A16.6,16.6,0,0,1,84.87,36.87ZM40,88h80v32H40Zm16,48h64v64H56Zm144,64H136V136h64Zm16-80H136V88h80v32Z"/></svg></span><b>Угости друга</b><small>Ты платишь — мы везём другу</small></button>
+<button type="button" class="feat" onclick="openSocial('BET')"><span class="fi"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M192,72V208a8,8,0,0,1-8,8H56a8,8,0,0,1-8-8V72Z" opacity="0.2"/><path d="M104,104v80a8,8,0,0,1-16,0V104a8,8,0,0,1,16,0Zm40-8a8,8,0,0,0-8,8v80a8,8,0,0,0,16,0V104A8,8,0,0,0,144,96Zm96,16v64a24,24,0,0,1-24,24H200v8a16,16,0,0,1-16,16H56a16,16,0,0,1-16-16V72c0-30.88,28.71-56,64-56,16.77,0,32.91,5.8,44.82,16H160a40,40,0,0,1,40,40V88h16A24,24,0,0,1,240,112ZM57,64H182.62A24,24,0,0,0,160,48H145.74a8,8,0,0,1-5.53-2.22C131.06,37,117.87,32,104,32,80.82,32,61.43,45.76,57,64ZM184,208V192.17c0-.06,0-.11,0-.17s0-.11,0-.17V80H56V208H184Zm40-96a8,8,0,0,0-8-8H200v80h16a8,8,0,0,0,8-8Z"/></svg></span><b>Спорим на пиво?</b><small>Проигравший платит</small></button>
+<button type="button" class="feat" onclick="openPass()"><span class="fi"><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M216.71,99.73l-15.6,93.59a8,8,0,0,1-7.89,6.68H62.78a8,8,0,0,1-7.89-6.68L39.29,99.73l.08,0a19.82,19.82,0,0,0,9.22-4.16h0L88,144l32-73.65h0a20,20,0,0,0,15.92,0h0L168,144l39.39-48.48h0a19.82,19.82,0,0,0,9.22,4.16Z" opacity="0.2"/><path d="M248,80a28,28,0,1,0-51.12,15.77l-26.79,33L146,73.4a28,28,0,1,0-36.06,0L85.91,128.74l-26.79-33a28,28,0,1,0-26.6,12L47,194.63A16,16,0,0,0,62.78,208H193.22A16,16,0,0,0,209,194.63l14.47-86.85A28,28,0,0,0,248,80ZM128,40a12,12,0,1,1-12,12A12,12,0,0,1,128,40ZM24,80A12,12,0,1,1,36,92,12,12,0,0,1,24,80ZM193.22,192H62.78L48.86,108.52,81.79,149A8,8,0,0,0,88,152a7.83,7.83,0,0,0,1.08-.07,8,8,0,0,0,6.26-4.74l29.3-67.4a27,27,0,0,0,6.72,0l29.3,67.4a8,8,0,0,0,6.26,4.74A7.83,7.83,0,0,0,168,152a8,8,0,0,0,6.21-3l32.93-40.52ZM220,92a12,12,0,1,1,12-12A12,12,0,0,1,220,92Z"/></svg></span><b>PASS</b><small>Доставка 0 ₾ от 30 ₾ · от 20 ₾/мес</small></button>
+</div>
+<button type="button" class="catchFriend" id="catchFriend" hidden onclick="catchFriend()"><span><svg class="ic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128a96,96,0,1,1-96-96A96,96,0,0,1,224,128Z" opacity="0.2"/><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216ZM80,108a12,12,0,1,1,12,12A12,12,0,0,1,80,108Zm104,0a8,8,0,0,1-8,8H152a8,8,0,0,1,0-16h24A8,8,0,0,1,184,108Zm-9.08,48c-10.29,17.79-27.39,28-46.92,28s-36.63-10.2-46.92-28a8,8,0,1,1,13.84-8c7.47,12.91,19.21,20,33.08,20s25.61-7.1,33.08-20a8,8,0,1,1,13.84,8Z"/></svg> ПОДЛОВИ ДРУГА</span><small>Отправь ему тот же прикол</small></button>
+<div class="twoCta"><button type="button" class="bigcta primary" onclick="goBundles()">ВЗЯТЬ ГОТОВЫЙ</button><button type="button" class="bigcta secondary" onclick="goBuild()">СОБРАТЬ СВОЙ</button></div>
+</section>
+
 <section class="card notfound" id="notFound"><div class="row"><div><b>Не нашли товар?</b><div class="muted">Напишите, что добавить в магазин</div></div><button type="button" class="yellow" onclick="openRequest()">Сообщить</button></div></section>
 
 <section class="secondary" id="secondary">
-<div class="card" id="repeatCard"><div class="row"><div><b>🔁 Повторить прошлый рывок</b><div class="muted">По номеру телефона — без поиска товаров заново</div></div><button type="button" class="yellow" onclick="openRepeat()">Повторить</button></div></div>
+<div class="card" id="repeatCard" hidden><div class="row"><div><b>🔁 Повторить прошлый рывок</b><div class="muted">По номеру телефона — без поиска товаров заново</div></div><button type="button" class="yellow" onclick="openRepeat()">Повторить</button></div></div>
 <div class="trust"><div>⚡ Быстрый заказ</div><div>💵 Наличные / перевод</div><div>🔞 Только 18+</div></div>
 </section>
 <footer class="footer">Пивка для рывка · 18+ · Продажа алкоголя только совершеннолетним<br><a href="#" data-chat class="contact-link">💬 Написать нам</a></footer></main>
@@ -264,6 +268,6 @@
 <div class="seg" style="margin-top:18px"><button type="button" id="clearCartBtn" onclick="clearCart()" style="border-color:#633;color:#ff9b9b">Очистить корзину</button><button type="button" class="orderGreen" onclick="openCheckout()">Оформить заказ →</button></div></div></div>
 
 <div class="overlay" id="checkoutOverlay"><div class="sheet"><div class="row"><div><h2>Оформить рывок</h2><div class="muted">Осталось совсем немного</div></div><button type="button" class="close" aria-label="Закрыть" onclick="closeSheet('checkoutOverlay')">×</button></div><div id="checkoutBody"><form id="checkoutForm" class="form" autocomplete="on" onsubmit="event.preventDefault();submitCheckout()"><input id="coName" name="name" type="text" autocomplete="name" autocapitalize="words" enterkeyhint="next" placeholder="Имя"><input id="coPhone" name="tel" type="tel" inputmode="tel" autocomplete="tel" enterkeyhint="next" placeholder="Телефон *"><div class="seg"><button type="button" id="deliveryBtn" class="on" onclick="setFulfillment('delivery')">🚗 Доставка</button><button type="button" id="pickupBtn" onclick="setFulfillment('pickup')">🏪 Самовывоз</button></div><input id="coAddress" name="street-address" type="text" autocomplete="street-address" autocapitalize="words" enterkeyhint="next" placeholder="Адрес доставки *"><select id="coZone"><option value="">Зона доставки</option></select><select id="coPickupTime" style="display:none"><option value="10">Буду через 10 минут</option><option value="15">Буду через 15 минут</option><option value="20">Буду через 20 минут</option><option value="30">Буду через 30 минут</option><option value="45">Буду через 45 минут</option><option value="60">Буду через 1 час</option><option value="90">Буду через 1,5 часа</option><option value="120">Буду через 2 часа</option></select><select id="coPayment"><option value="cash">Наличными</option><option value="transfer">Переводом</option></select><div id="paymentLinks" style="display:none"></div><div class="checkout-contact"><span id="checkoutHelp">Нужна помощь с заказом?</span> <a href="#" data-chat>💬 Напишите нам в чат</a></div><label class="age"><input type="checkbox" id="coAge"> <span>Мне исполнилось 18 лет. При получении заказа возраст может быть проверен.</span></label><textarea id="coComment" placeholder="Комментарий к заказу"></textarea><div id="checkoutNotice" class="notice" style="display:none"></div><div class="row"><span>К оплате</span><b class="accent" id="coTotal">0 ₾</b></div><div class="error" id="coError"></div><button type="submit" class="yellow checkout orderGreen" id="submitOrder">Подтвердить заказ →</button></form></div></div></div>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="./config.js"></script><script src="./js/db.js?v=20261010b"></script><script src="./js/track.js?v=20261007b"></script><script src="./js/store.js?v=20261012i"></script><script src="./js/i18n.js?v=20261013a"></script><script src="./js/intro.js?v=20261010a"></script><script src="./js/fun.js?v=20261010b"></script><script src="./js/chat.js?v=20261007b"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="./config.js"></script><script src="./js/db.js?v=20261010b"></script><script src="./js/track.js?v=20261007b"></script><script src="./js/store.js?v=20261013c"></script><script src="./js/i18n.js?v=20261013c"></script><script src="./js/intro.js?v=20261010a"></script><script src="./js/fun.js?v=20261010b"></script><script src="./js/chat.js?v=20261013b"></script>
 <!-- Voice seller (progressive enhancement: if any of these fail, the shop works as before). -->
-<script src="./js/recommendation-engine.js?v=20261012d"></script><script src="./js/voice-tools.js?v=20261012a"></script><script src="./js/voice-agent.js?v=20261012g"></script><script src="./js/voice-local.js?v=20261012a"></script><script src="./js/voice-ui.js?v=20261012g"></script></body></html>
+<script src="./js/recommendation-engine.js?v=20261012d"></script><script src="./js/voice-tools.js?v=20261012a"></script><script src="./js/voice-agent.js?v=20261012g"></script><script src="./js/voice-local.js?v=20261012a"></script><script src="./js/voice-ui.js?v=20261013b"></script></body></html>

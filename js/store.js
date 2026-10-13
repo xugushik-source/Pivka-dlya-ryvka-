@@ -10,7 +10,7 @@ let catalog = [],
   fulfillment = 'delivery',
   checkoutBundle = null,
   socialType = 'TREAT',
-  currentCat = 'draft',
+  currentCat = 'restaurant',
   nameI18n = {},
   categoryRows = [],
   catById = {},
@@ -377,7 +377,10 @@ async function renderLastOrder() {
       '<div class="lastBtns"><button type="button" class="yellow" onclick="repeatLast()">Повторить →</button><button type="button" class="skip" onclick="openRepeat()">Другой номер</button></div>';
     box.hidden = false;
     const quick = document.getElementById('repeatQuick');
-    if (quick) quick.hidden = true
+    if (quick) quick.hidden = true;
+    // «Повторить» is only for those who already ordered; a newcomer never sees it.
+    const card = document.getElementById('repeatCard');
+    if (card) card.hidden = false
   } catch (e) {
     console.warn(e)
   }
@@ -941,7 +944,7 @@ function offerUpsell(p) {
   upsellOffered.add(key);
   upsellFlow = {
     source: p,
-    title: p.unit === 'liter' ? 'Что возьмём к пиву?' : 'К этому обычно берут',
+    title: p.unit === 'liter' ? 'Что возьмём к пиву?' : key === 'restaurant' ? 'Что взять к шашлыку?' : 'К этому обычно берут',
     subtitle: 'Выбери раздел — можно несколько товаров'
   };
   resumeUpsell()
@@ -997,15 +1000,18 @@ function finishUpsellCategory() {
 }
 
 // ---------- Category navigation: big tiles for the first choice, compact sticky nav afterwards.
+// Owner's priority on the storefront: restaurant dishes, beer, pizza, strong — then everything else.
+const TOP_CATS = ['restaurant', 'draft', 'pizza', 'strong'];
 function renderNav() {
   const vis = CATS.filter(c => catProducts(c.slug).length);
+  const top = TOP_CATS.map(s => vis.find(c => c.slug === s)).filter(Boolean);
   const tile = c => `<button type="button" class="tile${catImg(c.slug)?' photo':''}${c.slug===currentCat?' on':''}" data-cat="${c.slug}" aria-pressed="${c.slug===currentCat}"${catImg(c.slug)?` style="background-image:url('${catImg(c.slug)}')"`:''}>${catImg(c.slug)?'':`<span class="ti" aria-hidden="true">${c.ico}</span>`}<span class="tt"><b>${c.label}</b><small>${countLabel(c.slug, catProducts(c.slug).length)}</small></span></button>`;
-  tilesAlc.innerHTML = vis.filter(c => c.grp === 'alc').map(tile).join('');
-  tilesFood.innerHTML = vis.filter(c => c.grp === 'food').map(tile).join('');
+  tilesAlc.innerHTML = top.map(tile).join('');
+  tilesFood.innerHTML = vis.filter(c => c.grp !== 'more' && !top.includes(c)).map(tile).join('');
   const more = vis.filter(c => c.grp === 'more');
   tilesMore.innerHTML = more.map(tile).join('');
   moreHead.hidden = !more.length;
-  catNav.innerHTML = vis.map(c => `<button type="button" class="chip${c.slug===currentCat?' on':''}" data-cat="${c.slug}">${c.ico} ${c.label}</button>`).join('');
+  catNav.innerHTML = [...top, ...vis.filter(c => !top.includes(c))].map(c => `<button type="button" class="chip${c.slug===currentCat?' on':''}" data-cat="${c.slug}">${c.ico} ${c.label}</button>`).join('');
   document.querySelectorAll('.tile,#catNav .chip').forEach(b => b.onclick = () => pickCategory(b.dataset.cat))
 }
 

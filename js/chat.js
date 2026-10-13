@@ -18,7 +18,7 @@
   let thread = get(KEY), lastId = 0, msgs = [], open = false, timer = 0, blockedUntil = null, sending = false;
 
   const css = `
-.pchatBtn{position:fixed;z-index:30;right:14px;bottom:calc(84px + env(safe-area-inset-bottom));width:54px;height:54px;border-radius:50%;border:0;background:#ffb51b;color:#171000;font-size:24px;box-shadow:0 6px 20px #0008;cursor:pointer}
+.pchatBtn{position:fixed;z-index:30;right:14px;bottom:calc(84px + env(safe-area-inset-bottom));width:54px;height:54px;border-radius:50%;border:0;background:#ffb51b;color:#171000;font-size:24px;box-shadow:0 6px 20px #0008;cursor:pointer}.pchatBtn .cic{width:30px;height:30px;display:block}
 .pchatBtn i{position:absolute;top:-3px;right:-3px;min-width:20px;height:20px;border-radius:10px;background:#e5484d;color:#fff;font:800 12px/20px system-ui;font-style:normal;padding:0 5px}
 .pchat{position:fixed;z-index:60;inset:0;display:none;background:#0b0e10;color:#fff;flex-direction:column;font:15px system-ui,-apple-system,sans-serif}
 .pchat.on{display:flex}
@@ -44,7 +44,7 @@
     const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
     const btn = document.createElement('button');
     btn.type = 'button'; btn.className = 'pchatBtn'; btn.id = 'pchatBtn'; btn.setAttribute('aria-label', 'Написать нам');
-    btn.innerHTML = '💬<i hidden></i>';
+    btn.innerHTML = '<svg class="cic" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="currentColor"><path d="M224,128A96,96,0,0,1,79.93,211.11h0L42.54,223.58a8,8,0,0,1-10.12-10.12l12.47-37.39h0A96,96,0,1,1,224,128Z" opacity="0.2"/><path d="M128,24A104,104,0,0,0,36.18,176.88L24.83,210.93a16,16,0,0,0,20.24,20.24l34.05-11.35A104,104,0,1,0,128,24Zm0,192a87.87,87.87,0,0,1-44.06-11.81,8,8,0,0,0-4-1.08,7.85,7.85,0,0,0-2.53.42L40,216,52.47,178.6a8,8,0,0,0-.66-6.54A88,88,0,1,1,128,216Zm12-88a12,12,0,1,1-12-12A12,12,0,0,1,140,128Zm-44,0a12,12,0,1,1-12-12A12,12,0,0,1,96,128Zm88,0a12,12,0,1,1-12-12A12,12,0,0,1,184,128Z"/></svg><i hidden></i>';
     btn.onclick = () => openChat();
     const box = document.createElement('section');
     box.className = 'pchat'; box.id = 'pchat'; box.setAttribute('aria-label', 'Чат');
