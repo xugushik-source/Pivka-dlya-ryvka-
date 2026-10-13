@@ -37,6 +37,7 @@ const CATS = [
   { slug: 'seafood', ico: '🦐', label: 'Морепродукты', title: 'Морепродукты', grp: 'food' },
   { slug: 'soft-drinks', ico: '🥤', label: 'Напитки', title: 'Напитки', grp: 'more' },
   { slug: 'energy', ico: '⚡', label: 'Энергетики', title: 'Энергетики', grp: 'more' },
+  { slug: 'coffee', ico: '☕', label: 'Кофе', title: 'Кофе', grp: 'more' },
   { slug: 'frozen', ico: '🥟', label: 'Пельмени и хаш', title: 'Пельмени и хаш', grp: 'more' },
   { slug: 'supplies', ico: '🧻', label: 'Посуда и салфетки', title: 'Одноразовая посуда и салфетки', grp: 'more' }
 ];
