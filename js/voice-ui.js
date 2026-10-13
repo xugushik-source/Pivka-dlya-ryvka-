@@ -7,7 +7,7 @@
   const TXT = {
     ru: {
       cta: 'Скажи, что хочешь', ctaSub: 'Я соберу рывок', title: '🎙 Продавец «Пивка для рывка»',
-      ready: 'Нажми и говори', connecting: 'Подключаю продавца…', listening: 'Слушаю…', thinking: 'Подбираю…', speaking: 'Отвечаю…',
+      ready: 'Нажми и говори', connecting: 'Подключаю продавца…', listening: 'Слушаю…', thinking: 'Подбираю…', speaking: 'Отвечаю…', reconnecting: 'Связь пропала, восстанавливаю…',
       ready_text: 'Напиши, что нужно', closed: 'Нажми и говори', local: 'Голосовой продавец сейчас недоступен — пиши, соберу по тексту',
       you: 'Ты', seller: 'Продавец', add: 'Добавить', change: 'Изменить', cart: 'Открыть корзину', end: 'Закончить разговор',
       write: 'Или напиши', send: 'Отправить', total: 'Итого', tryAgain: 'Ещё раз',
@@ -23,7 +23,7 @@
     },
     ka: {
       cta: 'თქვი, რა გინდა', ctaSub: 'ნაკრებს შეგირჩევ', title: '🎙 გამყიდველი „ლუდი გაქანებისთვის“',
-      ready: 'დააჭირე და ილაპარაკე', connecting: 'გამყიდველს ვუკავშირდები…', listening: 'გისმენ…', thinking: 'ვარჩევ…', speaking: 'გპასუხობ…',
+      ready: 'დააჭირე და ილაპარაკე', connecting: 'გამყიდველს ვუკავშირდები…', listening: 'გისმენ…', thinking: 'ვარჩევ…', speaking: 'გპასუხობ…', reconnecting: 'კავშირი გაწყდა, ვაღდგენ…',
       ready_text: 'დაწერე, რა გჭირდება', closed: 'დააჭირე და ილაპარაკე', local: 'ხმოვანი გამყიდველი ახლა მიუწვდომელია — დაწერე, ტექსტით შეგირჩევ',
       you: 'შენ', seller: 'გამყიდველი', add: 'დამატება', change: 'შეცვლა', cart: 'კალათის გახსნა', end: 'საუბრის დასრულება',
       write: 'ან დაწერე', send: 'გაგზავნა', total: 'ჯამი', tryAgain: 'კიდევ ერთხელ',
@@ -39,7 +39,7 @@
     },
     hy: {
       cta: 'Ասա՝ ինչ ես ուզում', ctaSub: 'Ես կհավաքեմ հավաքածուն', title: '🎙 Վաճառող «Գարեջուր լավ երեկոյի համար»',
-      ready: 'Սեղմիր և խոսիր', connecting: 'Միացնում եմ վաճառողին…', listening: 'Լսում եմ…', thinking: 'Ընտրում եմ…', speaking: 'Պատասխանում եմ…',
+      ready: 'Սեղմիր և խոսիր', connecting: 'Միացնում եմ վաճառողին…', listening: 'Լսում եմ…', thinking: 'Ընտրում եմ…', speaking: 'Պատասխանում եմ…', reconnecting: 'Կապը կտրվեց, վերականգնում եմ…',
       ready_text: 'Գրիր՝ ինչ է պետք', closed: 'Սեղմիր և խոսիր', local: 'Ձայնային վաճառողը հիմա հասանելի չէ — գրիր, կհավաքեմ տեքստով',
       you: 'Դու', seller: 'Վաճառող', add: 'Ավելացնել', change: 'Փոխել', cart: 'Բացել զամբյուղը', end: 'Ավարտել զրույցը',
       write: 'Կամ գրիր', send: 'Ուղարկել', total: 'Ընդամենը', tryAgain: 'Կրկին',
@@ -144,11 +144,28 @@
     $('vStatus').textContent = x[s] || x.ready;
     const mic = $('vMic');
     mic.classList.toggle('on', state === 'listening');
-    mic.classList.toggle('wait', state === 'connecting' || state === 'thinking');
-    mic.textContent = state === 'speaking' ? '✋' : state === 'connecting' || state === 'thinking' ? '…' : '🎙';
-    mic.disabled = mode === 'local' || state === 'connecting';
+    mic.classList.toggle('wait', state === 'connecting' || state === 'thinking' || state === 'reconnecting');
+    mic.textContent = state === 'speaking' ? '✋' : state === 'connecting' || state === 'thinking' || state === 'reconnecting' ? '…' : '🎙';
+    mic.disabled = mode === 'local' || state === 'connecting' || state === 'reconnecting';
+    diagPaint();
     if (errCode) { $('vErr').hidden = false; $('vErr').textContent = x.err[errCode] || x.err.default } else $('vErr').hidden = true;
     $('vFall').hidden = !(mode === 'local' || errCode);
+  }
+
+  // ?vdebug=1: the session timeline right in the sheet (event names and timings only) with a copy button.
+  function diagPaint() {
+    if (!PivkaVoiceAgent.debug) return;
+    let box = $('vDiag');
+    if (!box) {
+      box = document.createElement('div');
+      box.innerHTML = '<button type="button" id="vDiagCopy" style="margin:8px 0;border-radius:10px;padding:6px 10px">Copy log</button><pre id="vDiag" style="max-height:180px;overflow:auto;font-size:10px;white-space:pre-wrap;background:#0b0d0e;border-radius:10px;padding:8px"></pre>';
+      $('voiceOverlay').querySelector('.sheet').appendChild(box);
+      box = $('vDiag');
+      $('vDiagCopy').onclick = () => { try { navigator.clipboard.writeText(box.textContent) } catch (e) {} };
+      setInterval(diagPaint, 1000);
+    }
+    box.textContent = PivkaVoiceAgent.diag().map((x) => { const { t: ms, ev, ...rest } = x; return (ms / 1000).toFixed(1) + 's ' + ev + (Object.keys(rest).length ? ' ' + JSON.stringify(rest) : '') }).join('\n');
+    box.scrollTop = box.scrollHeight;
   }
 
   function open() {

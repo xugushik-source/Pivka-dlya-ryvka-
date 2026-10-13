@@ -24,8 +24,8 @@ const CONFIG = {
   newPerDay: Number(env("VOICE_NEW_PER_DAY", "1")),
   minGapSeconds: Number(env("VOICE_MIN_GAP_SECONDS", "60")),
   dailyLimit: Number(env("VOICE_DAILY_LIMIT", "50")),
-  maxSeconds: Number(env("VOICE_MAX_SECONDS", "180")),
-  newMaxSeconds: Number(env("VOICE_NEW_MAX_SECONDS", "120")),
+  maxSeconds: Number(env("VOICE_MAX_SECONDS", "300")),
+  newMaxSeconds: Number(env("VOICE_NEW_MAX_SECONDS", "240")),
 };
 const ALLOWED = [
   /^https:\/\/(www\.)?pivkadlaryvka\.ge$/,
@@ -184,7 +184,14 @@ Deno.serve(async (req) => {
       count((q) => q.eq("event_name", "voice_secret_issued").eq("metadata->>who", who).gte("created_at", gapStart)),
     ]);
     if (day >= CONFIG.dailyLimit) return out({ error: "daily_limit", public: isPublic }, 429);
-    if (!body.check) {
+    // A dropped line resumes the same talk: allowed for a session that got a secret in the last 15 minutes
+    // (still within the hourly cap + 2), without the gap and the newcomer limits.
+    let resuming = false;
+    if (!body.check && body.resume && session) {
+      const recent = await count((q) => q.eq("event_name", "voice_secret_issued").eq("session_id", session).gte("created_at", new Date(Date.now() - 15 * 60e3).toISOString()));
+      resuming = recent > 0 && hour < CONFIG.perHour + 2;
+    }
+    if (!body.check && !resuming) {
       if (hour >= CONFIG.perHour || gap > 0) return out({ error: "rate_limit", retry_after: CONFIG.minGapSeconds }, 429);
       if (!returning) {
         const mine = await count((q) => q.eq("event_name", "voice_secret_issued").eq("metadata->>who", who).gte("created_at", dayStart));
@@ -209,7 +216,7 @@ Deno.serve(async (req) => {
         model: CONFIG.model,
         instructions: instructions(lang),
         output_modalities: ["audio"],
-        max_output_tokens: 250,
+        max_output_tokens: 1500, // audio tokens count too: 250 cut the seller off mid-sentence on any longer answer
         audio: {
           input: {
             transcription: { model: CONFIG.transcribeModel, prompt: "Пивка для рывка, Ахалкалаки, лари, рывок, разливное пиво, литр, шашлык, пицца, Сиг, PASS, доставка" },
@@ -229,6 +236,6 @@ Deno.serve(async (req) => {
     await log("voice_error", session, { where: "client_secret", status: r.status, lang });
     return out({ error: r.status === 429 ? "openai_quota" : "openai" }, 502);
   }
-  await log("voice_secret_issued", session, { who, lang, model: CONFIG.model, voice, returning });
+  await log("voice_secret_issued", session, { who, lang, model: CONFIG.model, voice, returning, resume: !!body.resume });
   return out({ value: j.value, expires_at: j.expires_at, model: CONFIG.model, max_seconds: maxSeconds, returning });
 });
