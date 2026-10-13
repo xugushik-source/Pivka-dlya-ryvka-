@@ -20,9 +20,9 @@ const CONFIG = {
   model: env("VOICE_MODEL", "gpt-realtime-2.1"),
   voice: env("VOICE_VOICE", "marin"),
   transcribeModel: env("VOICE_TRANSCRIBE_MODEL", "gpt-4o-transcribe"),
-  perHour: Number(env("VOICE_PER_HOUR", "30")), // TEMP test hour
-  newPerDay: Number(env("VOICE_NEW_PER_DAY", "30")), // TEMP test hour
-  minGapSeconds: Number(env("VOICE_MIN_GAP_SECONDS", "5")), // TEMP test hour
+  perHour: Number(env("VOICE_PER_HOUR", "3")),
+  newPerDay: Number(env("VOICE_NEW_PER_DAY", "1")),
+  minGapSeconds: Number(env("VOICE_MIN_GAP_SECONDS", "60")),
   dailyLimit: Number(env("VOICE_DAILY_LIMIT", "50")),
   maxSeconds: Number(env("VOICE_MAX_SECONDS", "120")), // a customer who already ordered: 2 min
   newMaxSeconds: Number(env("VOICE_NEW_MAX_SECONDS", "240")), // the first talk before any order: 4 min
@@ -60,6 +60,8 @@ function instructions(lang: string) {
 Ты продаёшь как сильный официант: узнаёшь гостя, собираешь уместный стол и предлагаешь чуть лучше.
 - Узнай, по одному-два вопроса за раз: сколько человек и бюджет; под пиво или покрепче (вино, без алкоголя); какой стол — шашлык с мангала, пицца/хачапури или пивной вечер с сосисками или с рыбой. Уже сказал — не переспрашивай. «Сама реши» — выбирай сама (scenario не передавай).
 - Один стол — один сценарий: шашлык не мешают с сосисками, к шашлыку не дают орешки. Сосиски — много и много пива, а «на потом» джерки, орешки, чипсы. Рыба — большая рыба и пиво, потом мелкая рыбка.
+- НЕ вызывай recommend_cart, пока не знаешь все четыре: сколько человек, бюджет, что пьют, какой стол. Чего не хватает — спроси, по одному вопросу, коротко, и дождись ответа. Не додумывай за клиента; исключение — «сама реши» / «на твой вкус».
+- Дай клиенту договорить: не перебивай, не начинай считать посреди его фразы.
 - Собирай через recommend_cart (scenario, alcohol, people, budget) и не пересчитывай сам. Он уже выбрал выгодные позиции и уложился в бюджет.
 - Озвучь коротко стол и итог, и сразу — «красивый стол» из поля upgrade, один раз: «На шестерых за 198: 10 литров пива, два чалагача, крылышки, голени, салаты и овощи с мангала. А добавишь 31 — ещё чалагач и пара литров, стол будет прямо красивый. Делаем на 229 или оставим 198?»
 - Если есть bundle — можно упомянуть его как готовый вариант, но не вместо подбора.
@@ -222,7 +224,9 @@ Deno.serve(async (req) => {
           input: {
             transcription: { model: CONFIG.transcribeModel, prompt: "Пивка для рывка, Ахалкалаки, лари, рывок, разливное пиво, литр, шашлык, пицца, Сиг, PASS, доставка" },
             noise_reduction: { type: "near_field" },
-            turn_detection: { type: "semantic_vad", eagerness: "low", create_response: true, interrupt_response: true },
+            // The customer finishes the phrase: an answer starts only after 0.9 s of silence (semantic VAD answered
+            // into short mid-sentence pauses and the customer had to talk over her).
+            turn_detection: { type: "server_vad", threshold: 0.55, prefix_padding_ms: 300, silence_duration_ms: 900, create_response: true, interrupt_response: true },
           },
           output: { voice },
         },
