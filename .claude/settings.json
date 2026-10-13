@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh api repos/xugushik-source/Pivka-dlya-ryvka-/pulls/*/merge *)"
+    ]
+  }
+}
