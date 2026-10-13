@@ -1,22 +1,23 @@
-/* Voice seller — deterministic cart recommendation.
-   The AI only turns speech into parameters (people, budget, what they drink, what they eat); this module picks real
-   products from the loaded catalog (store.js has already dropped closed hours and applied night prices) and returns a
-   cart proposal. Nothing here is added to the cart — that is apply_recommendation in voice-tools.js.
-   Pure function: (input, catalog, bundles) → proposal. No DOM, no network.
+/* Voice seller — deterministic cart recommendation, the way a strong waiter sells.
+   The AI only turns speech into parameters (people, budget, what they drink, what kind of table); this module picks
+   real products from the loaded catalog (store.js has already dropped closed hours and applied night prices) and
+   returns a cart proposal plus a «красивый стол» upgrade. Nothing is added to the cart here — apply_recommendation in
+   voice-tools.js does that. Pure function: (input, catalog, bundles, rank) → proposal. No DOM, no network.
 
-   How a company actually orders (catering norms, adjusted to our menu):
-   • beer: 1.5 L a head for an evening (1 L light, 2 L heavy); vodka/brandy: 0.5 L per 2–3 people, plus 1 L of
-     lemonade or water per 2 people to wash it down; wine: a bottle per 2 people;
-   • shashlik: ~300 g of meat a head = one skewer portion a head (more with strong drinks), mixed kinds, a salad per
-     3 people and grilled vegetables per 5;
-   • pizza / khachapuri 40 cm: one per 2–3 people;
-   • beer snacks: one «real» snack (fish, cheese, meat) per 2 people; nuts, chips and seeds only as a small extra;
-   • the whole budget is used — the company asked for 200, they get ~200 worth of food and drink, never above. */
+   People eat by scenario, not by category — one table never mixes shashlik with sausages:
+   • shashlik — 2–3 kinds of skewers (one skewer = one person), salad per 3, grilled vegetables per 5, 1.5 L beer a head;
+   • sausages — lots of sausages first, lots of beer (2 L a head); then jerky / nuts / chips to keep drinking;
+   • fish     — a big dried fish first, beer 2 L a head; then small fish and cheese sticks;
+   • pizza    — a 40 cm pizza / khachapuri per 2–3 people, 1 L beer a head;
+   • cold     — strong drinks without the grill: chicken, sujuk, sausage, pickles and something to wash it down;
+   • wine     — a bottle per 2, khachapuri, a cheese plate per 4.
+   Inside each slot the more profitable product wins (rank 1 = most GEL profit in its category, from reco_rank());
+   the norms decide how much. The whole budget is used, never above it; the upgrade adds ~+20% of the same table. */
 (function () {
   'use strict';
   const STRONG = ['strong', 'vodka', 'whisky', 'brandy', 'rum', 'gin', 'tequila', 'liqueur', 'vermouth'];
   const SNACKS = ['fish', 'cheese', 'meat-snacks', 'nuts', 'chips', 'snacks', 'salty'];
-  const REAL_SNACKS = ['fish', 'cheese', 'meat-snacks'];
+  const SCENARIOS = ['shashlik', 'sausages', 'fish', 'pizza', 'cold', 'wine'];
   const r2 = (n) => Math.round(n * 100) / 100;
   const slug = (p) => p.category_slug || (p.categories && p.categories.slug) || '';
   const price = (p) => Number(p.sale_price || 0);
@@ -26,29 +27,43 @@
     (list || []).forEach((c) => { if (c === 'strong' || c === 'alcohol_strong') STRONG.forEach((x) => s.add(x)); else s.add(String(c)) });
     return s;
   };
-  // Grill menu by name: how many people one item feeds (every skewer is one person's portion), and the order a company likes them in.
-  const GRILL = [
-    [/мякот/i, 1, 'meat'], [/чалагач|корейк/i, 1, 'meat'], [/кебаб|люля/i, 1, 'meat'], [/грудк/i, 1, 'meat'],
-    [/голен|окороч/i, 1, 'meat'], [/крыл/i, 1, 'meat'], [/картош/i, 1, 'meat'],
-    [/салат/i, 3, 'salad'], [/овощ/i, 5, 'veg'],
-  ];
-  const grillKind = (p) => { const g = GRILL.find(([re]) => re.test(p.name || '')); return g ? { feeds: g[1], kind: g[2], rank: GRILL.indexOf(g) } : null };
+  const grams = (p) => { const m = String(p.name || '').match(/(\d{3,4})\s*г/); return m ? Number(m[1]) : (/1 кг/.test(p.name || '') ? 1000 : 0) };
+
+  // What a product is on a table: its slot in a scenario and how many people one piece feeds.
+  function kind(p) {
+    const n = p.name || '', c = slug(p);
+    if (c === 'restaurant') {
+      if (/салат/i.test(n)) return { slot: 'salad' };
+      if (/овощ/i.test(n)) return { slot: 'veg' };
+      if (/картош/i.test(n)) return { slot: 'grill', group: 'potato', feeds: 1 };
+      if (/мякот|чалагач|корейк/i.test(n)) return { slot: 'grill', group: 'pork', feeds: 1 };
+      if (/грудк|голен|окороч|крыл/i.test(n)) return { slot: 'grill', group: 'chicken', feeds: 1 };
+      return { slot: 'grill', group: 'beef', feeds: 1 };
+    }
+    if (c === 'meat-snacks') {
+      if (/jerky|нарезк/i.test(n)) return { slot: 'beer_cont' };
+      const g = grams(p);
+      return { slot: 'meat_main', feeds: g >= 900 ? 4 : g >= 450 ? 3 : 2, sausage: /сосиск|колбас/i.test(n) };
+    }
+    if (c === 'fish') return price(p) >= 15 ? { slot: 'fish_main', feeds: grams(p) >= 450 ? 3 : 2 } : { slot: 'fish_cont' };
+    if (c === 'cheese') return price(p) >= 10 ? { slot: 'cheese_plate' } : { slot: 'fish_cont' };
+    if (c === 'pizza') return price(p) >= 20 ? { slot: 'pizza', feeds: 2.5, khachapuri: /хачапури/i.test(n) } : { slot: 'lahmajo' };
+    if (['nuts', 'chips', 'snacks'].includes(c)) return { slot: 'beer_cont' };
+    if (c === 'salty') return { slot: 'pickles' };
+    if (c === 'draft') return { slot: 'beer' };
+    if (c === 'wine') return { slot: 'wine' };
+    if (STRONG.includes(c)) return { slot: 'strong' };
+    if (c === 'soft-drinks') return { slot: 'soft' };
+    return { slot: 'other' };
+  }
 
   function roundQty(p, q) {
     const min = Number(p.minimum_quantity || (p.unit === 'liter' ? 2 : 1)), step = Number(p.quantity_step || (p.unit === 'liter' ? 2 : 1));
     if (q <= min) return min;
     return min + Math.ceil((q - min) / step - 1e-9) * step;
   }
-  // economy = cheapest, premium = most expensive, optimal = the middle of the shelf.
-  function pick(list, level) {
-    const l = list.slice().sort((a, b) => price(a) - price(b) || String(a.id).localeCompare(String(b.id)));
-    if (!l.length) return null;
-    if (level === 'economy') return l[0];
-    if (level === 'premium') return l[l.length - 1];
-    return l[Math.floor((l.length - 1) / 2)];
-  }
 
-  function recommend(input, catalog, bundles) {
+  function recommend(input, catalog, bundles, rankMap) {
     const people = Math.max(1, Math.min(40, Math.round(Number(input.people) || 2)));
     const budget = Number(input.budget) > 0 ? Number(input.budget) : null;
     const level = ['economy', 'optimal', 'premium'].includes(input.level) ? input.level : 'optimal';
@@ -57,19 +72,26 @@
     const more = expand(input.more_categories);
     const prefer = (input.prefer_categories || []).map(String);
     if (alcohol === 'none') ['draft', 'wine', ...STRONG].forEach((x) => exclude.add(x));
-    const ok = (catalog || []).filter((p) => isAvail(p) && !exclude.has(slug(p)));
-    const by = (s) => ok.filter((p) => slug(p) === s);
-    const grill = by('restaurant').map((p) => ({ p, g: grillKind(p) })).filter((x) => x.g);
-    const meats = grill.filter((x) => x.g.kind === 'meat').sort((a, b) => a.g.rank - b.g.rank);
-    const pizzas = by('pizza').filter((p) => price(p) >= 20); // 40 cm only; lahmajo is a snack, not a meal
+    const rank = (p) => (rankMap && rankMap[p.id]) || 50;
+    const ok = (catalog || []).filter((p) => isAvail(p) && !exclude.has(slug(p))).map((p) => ({ p, k: kind(p) }));
+    const slot = (s, f) => ok.filter((x) => x.k.slot === s && (!f || f(x))).map((x) => x.p);
+    // Best for the shop first; on a tie the level decides (premium — dearer, otherwise cheaper).
+    const best = (list) => list.slice().sort((a, b) => rank(a) - rank(b) || (level === 'premium' ? price(b) - price(a) : price(a) - price(b)) || String(a.name).localeCompare(String(b.name)));
     const perHead = budget ? budget / people : null;
+    // Drinks: the most profitable within the ordinary shelf (a 66 ₾ vodka is not «optimal» for a company of six).
+    const band = (list) => { const min = Math.min(...list.map(price)); const k = { economy: 1.15, optimal: 1.5, premium: Infinity }[level]; return best(list.filter((p) => price(p) <= min * k)) };
 
-    // What they eat: asked → as asked; otherwise grill when it is open and the money is there, then pizza, then snacks.
-    let food = ['shashlik', 'pizza', 'snacks'].includes(input.food) ? input.food : null;
-    if (!food) food = prefer.includes('restaurant') || more.has('restaurant') ? 'shashlik' : prefer.includes('pizza') || more.has('pizza') ? 'pizza' : null;
-    if (food === 'shashlik' && !meats.length) food = pizzas.length ? 'pizza' : 'snacks';
-    if (food === 'pizza' && !pizzas.length) food = meats.length ? 'shashlik' : 'snacks';
-    if (!food) food = meats.length && (!perHead || perHead >= 25) ? 'shashlik' : pizzas.length && (!perHead || perHead >= 15) ? 'pizza' : 'snacks';
+    // 1. Scenario: as asked; otherwise by the drink, what is open now and the money a head.
+    const has = { shashlik: slot('grill').length > 0, sausages: slot('meat_main', (x) => x.k.sausage).length > 0, fish: slot('fish_main').length > 0, pizza: slot('pizza').length > 0, cold: slot('meat_main').length > 0, wine: slot('pizza').length > 0 };
+    let scenario = SCENARIOS.includes(input.scenario) ? input.scenario : ({ restaurant: 'shashlik', pizza: 'pizza', fish: 'fish', 'meat-snacks': 'sausages' })[prefer.find((c) => ['restaurant', 'pizza', 'fish', 'meat-snacks'].includes(c))] || null;
+    if (!scenario) {
+      const grill = has.shashlik && (!perHead || perHead >= 25);
+      if (alcohol === 'wine') scenario = grill ? 'shashlik' : 'wine';
+      else if (alcohol === 'strong') scenario = grill ? 'shashlik' : 'cold';
+      else scenario = grill ? 'shashlik' : has.sausages ? 'sausages' : has.fish ? 'fish' : 'pizza';
+    }
+    if (!has[scenario]) scenario = ['shashlik', 'sausages', 'fish', 'pizza', 'cold'].find((s) => has[s]) || 'sausages';
+    const beerTable = ['sausages', 'fish'].includes(scenario);
 
     const lines = [];
     const line = (p) => lines.find((l) => l.product_id === p.id);
@@ -81,150 +103,159 @@
     };
     const set = (l, qty) => { if (qty <= 0) lines.splice(lines.indexOf(l), 1); else { l.quantity = r2(qty); l.sum = r2(l.price * l.quantity) } };
     const total = () => r2(lines.reduce((s, l) => s + l.sum, 0));
-    const room = () => (budget ? r2(budget - total()) : Infinity);
+    let cap = budget;
+    const room = () => (cap ? r2(cap - total()) : Infinity);
+    const qtyOf = (role) => lines.filter((l) => l.role === role).reduce((s, l) => s + l.quantity, 0);
+    const byId = (id) => (ok.find((x) => x.p.id === id) || {}).p;
 
-    // 1. Drinks.
-    const beerList = by('draft');
-    const strongList = ok.filter((p) => STRONG.includes(slug(p)) && /0[,.]5/.test(p.name || ''));
-    const softList = by('soft-drinks').filter((p) => /1 л|0[,.]9/.test(p.name || ''));
-    let beerPerHead = { economy: 1, optimal: 1.5, premium: 2 }[level] * (more.has('draft') ? 1.33 : 1);
-    if (alcohol === 'any') beerPerHead = 1;
-    const beer = ['beer', 'any'].includes(alcohol) ? pick(beerList, level) : null;
-    if (beer) add(beer, roundQty(beer, people * beerPerHead), 'drink');
+    // 2. Main food — a few kinds, best for the shop first, at least one pork and one chicken on the grill.
+    const khach = slot('pizza', (x) => x.k.khachapuri);
+    const mainList = scenario === 'shashlik' ? slot('grill', (x) => x.k.group !== 'potato')
+      : scenario === 'sausages' ? slot('meat_main', (x) => x.k.sausage)
+      : scenario === 'cold' ? slot('meat_main')
+      : scenario === 'fish' ? slot('fish_main')
+      : scenario === 'wine' && khach.length ? khach : slot('pizza');
+    const feeds = (p) => (p && kind(p).feeds) || 1;
+    const kindsN = people <= 2 ? 1 : people <= 4 ? 2 : people <= 8 ? 3 : 4;
+    const kinds = [];
+    if (scenario === 'shashlik') ['pork', 'chicken'].forEach((g) => { const b = best(mainList.filter((p) => kind(p).group === g))[0]; if (b && kinds.length < kindsN) kinds.push(b) });
+    best(mainList).forEach((p) => { if (kinds.length < kindsN && !kinds.includes(p)) kinds.push(p) });
+    kinds.sort((a, b) => rank(a) - rank(b));
+    const mainFed = () => lines.filter((l) => l.role === 'main').reduce((s, l) => s + l.quantity * feeds(byId(l.product_id)), 0);
+    const mainTarget = scenario === 'wine' ? people / 3 * 2.5 : people * (alcohol === 'strong' && scenario === 'shashlik' ? 1.15 : 1);
+    const addMain = (limitRoom) => {
+      const pool = (kinds.length ? kinds : mainList).filter((p) => !limitRoom || price(p) <= room());
+      if (!pool.length) return false;
+      const fed = (p) => (line(p) || { quantity: 0 }).quantity * feeds(p);
+      pool.sort((a, b) => fed(a) - fed(b) || rank(a) - rank(b));
+      add(pool[0], 1, 'main'); return true;
+    };
+    while (mainFed() < mainTarget - 1e-9 && addMain(false));
+
+    // 3. Sides that belong to this table.
+    if (scenario === 'shashlik') {
+      const salad = best(slot('salad'))[0], veg = best(slot('veg'))[0];
+      if (salad) add(salad, Math.max(1, Math.ceil(people / 3)), 'side');
+      if (veg && people >= 3) add(veg, Math.ceil(people / 5), 'side');
+    }
+    if (scenario === 'wine') { const c = best(slot('cheese_plate'))[0]; if (c) add(c, Math.max(1, Math.ceil(people / 4)), 'side') }
+    if (alcohol === 'strong' || scenario === 'cold') { const s = best(slot('pickles'))[0]; if (s) add(s, Math.max(1, Math.ceil(people / (scenario === 'cold' ? 4 : 6))), 'side') }
+    // «To keep drinking» after the main — only on beer tables, different kinds (jerky, nuts, chips — not three of one).
+    const contList = scenario === 'sausages' ? best(slot('beer_cont')) : scenario === 'fish' ? best(slot('fish_cont')) : scenario === 'pizza' && alcohol !== 'none' ? best(slot('beer_cont', (x) => slug(x.p) === 'chips')) : [];
+    const contTarget = beerTable ? Math.max(1, Math.ceil(people / 2)) : scenario === 'pizza' ? Math.floor(people / 4) : 0;
+    const addCont = (limitRoom) => {
+      const cats = (p) => lines.filter((l) => l.role === 'cont' && l.category === slug(p)).length;
+      const pool = contList.filter((p) => !line(p) && (!limitRoom || price(p) <= room())).sort((a, b) => cats(a) - cats(b));
+      if (!pool[0]) return false;
+      add(pool[0], 1, 'cont'); return true;
+    };
+    for (let i = 0; i < contTarget; i++) if (!addCont(false)) break;
+
+    // 4. Drinks by the norm of this table.
+    const beerP = ['beer', 'any'].includes(alcohol) ? band(slot('beer'))[0] : null;
+    const beerHead = { shashlik: 1.5, sausages: 2, fish: 2, pizza: 1, cold: 0, wine: 0 }[scenario] * ({ economy: 0.75, optimal: 1, premium: 1.25 }[level]) * (more.has('draft') ? 1.33 : 1) * (alcohol === 'any' ? 0.67 : 1);
+    if (beerP && beerHead > 0) add(beerP, roundQty(beerP, people * beerHead), 'drink');
     if (['strong', 'any'].includes(alcohol)) {
-      const kind = prefer.find((c) => STRONG.includes(c)) || 'vodka';
-      const s = pick(strongList.filter((p) => slug(p) === kind).length ? strongList.filter((p) => slug(p) === kind) : strongList, level);
+      const want = prefer.find((c) => STRONG.includes(c)) || 'vodka';
+      const half = slot('strong', (x) => /0[,.]5/.test(x.p.name || ''));
+      const s = band(half.filter((p) => slug(p) === want).length ? half.filter((p) => slug(p) === want) : half)[0];
       if (s) add(s, Math.max(1, Math.ceil(people / (alcohol === 'any' ? 5 : 2.5))), 'drink');
     }
-    if (alcohol === 'wine') { const w = pick(by('wine'), level); if (w) add(w, Math.max(1, Math.ceil(people / 2)), 'drink') }
+    if (alcohol === 'wine') { const w = band(slot('wine', (x) => /0[,.]75/.test(x.p.name || '')))[0]; if (w) add(w, Math.max(1, Math.ceil(people / 2)), 'drink') }
     if (['strong', 'none'].includes(alcohol) || (alcohol === 'wine' && people >= 3)) {
-      const s = pick(softList.length ? softList : by('soft-drinks'), 'economy');
+      const liters = slot('soft', (x) => /1 л|0[,.]9/.test(x.p.name || ''));
+      const s = band(liters.length ? liters : slot('soft'))[0];
       if (s) add(s, Math.max(1, Math.ceil(people / 2)), 'drink');
     }
+    const beerL = () => beerP && line(beerP);
+    const beerStep = beerP ? Number(beerP.quantity_step || 2) : 2;
 
-    // 2. Food.
-    const meatTarget = people * (alcohol === 'strong' ? 1.15 : 1);
-    const meatFed = () => lines.filter((l) => l.role === 'meat').reduce((s, l) => s + l.quantity * (grillKind(l).feeds), 0);
-    const addMeat = () => {
-      // Round-robin over kinds: the kind with the fewest skewers so far, best-liked first.
-      const fit = meats.filter((x) => x.p && price(x.p) <= room());
-      if (!fit.length) return false;
-      const cnt = (x) => (line(x.p) || { quantity: 0 }).quantity;
-      fit.sort((a, b) => cnt(a) - cnt(b) || a.g.rank - b.g.rank);
-      add(fit[0].p, 1, 'meat'); return true;
-    };
-    const snackPool = () => {
-      const order = [...new Set([...prefer.filter((c) => SNACKS.includes(c)), ...[...more].filter((c) => SNACKS.includes(c)), ...REAL_SNACKS])];
-      // Bigger packs for bigger companies.
-      return order.map((c) => by(c).sort((a, b) => (people >= 4 ? price(b) - price(a) : price(a) - price(b)))).flat();
-    };
-    const addSnack = () => {
-      const used = new Set(lines.map((l) => l.product_id));
-      const pool = snackPool().filter((p) => price(p) <= room());
-      const cats = (c) => lines.filter((l) => l.category === c).length;
-      const fresh = pool.filter((p) => !used.has(p.id)).sort((a, b) => cats(slug(a)) - cats(slug(b)));
-      if (fresh[0]) { add(fresh[0], 1, 'food'); return true }
-      return false;
-    };
-
-    if (food === 'shashlik') {
-      const salad = grill.find((x) => x.g.kind === 'salad'), veg = grill.find((x) => x.g.kind === 'veg');
-      while (meatFed() < meatTarget && addMeat());
-      if (salad) add(salad.p, Math.max(1, Math.ceil(people / 3)), 'side');
-      if (veg && people >= 4) add(veg.p, Math.ceil(people / 5), 'side');
-    } else if (food === 'pizza') {
-      const n = Math.max(1, Math.ceil(people / 2.5));
-      const order = pizzas.slice().sort((a, b) => (level === 'economy' ? price(a) - price(b) : 0));
-      for (let i = 0; i < n; i++) add(order[i % order.length], 1, 'meal');
-    }
-    if (food === 'snacks' || alcohol === 'beer' || alcohol === 'any') {
-      const want = food === 'snacks' ? Math.max(2, Math.ceil(people / 2)) : Math.max(1, Math.floor(people / 4));
-      for (let i = 0; i < want; i++) if (!addSnack()) break;
-    }
-    if (alcohol === 'strong') { const s = pick(by('salty'), 'economy'); if (s) add(s, Math.max(1, Math.floor(people / 4)), 'food') }
-
-    // 3. Over the budget: trim in the order a seller would — fewer extras first, never the drink before the food.
+    // 5. Over the budget — trim the way a seller would: extras, beer down to 1 L, cheaper skewers, sides, smaller
+    //    portions. The main food goes last.
     if (budget) {
-      let guard = 80;
+      let guard = 120;
       while (total() > budget && guard-- > 0) {
-        const extras = lines.filter((l) => l.role === 'food').sort((a, b) => b.sum - a.sum);
-        const sides = lines.filter((l) => l.role === 'side');
-        const beerL = beer && line(beer);
+        const cont = lines.filter((l) => l.role === 'cont').sort((a, b) => b.sum - a.sum);
+        if (cont.length > Math.ceil(contTarget / 2)) { set(cont[0], 0); continue }
+        const bl = beerL();
+        if (bl && bl.quantity - beerStep >= roundQty(beerP, people * 1)) { set(bl, bl.quantity - beerStep); continue }
+        const unit = (l) => l.price / feeds(byId(l.product_id));
+        const mains = lines.filter((l) => l.role === 'main').sort((a, b) => unit(b) - unit(a));
+        const cheap = mainList.slice().sort((a, b) => price(a) / feeds(a) - price(b) / feeds(b))[0];
+        const dear = mains.find((l) => cheap && l.product_id !== cheap.id && unit(l) > price(cheap) / feeds(cheap) + 0.5);
+        if (dear) { set(dear, dear.quantity - 1); add(cheap, 1, 'main'); continue }
+        const veg = lines.find((l) => l.role === 'side' && /овощ/i.test(l.name));
+        if (veg) { set(veg, veg.quantity - 1); continue }
+        const salad = lines.find((l) => l.role === 'side' && /салат/i.test(l.name));
+        if (salad && salad.quantity > Math.ceil(people / 5)) { set(salad, salad.quantity - 1); continue }
+        if (mains.length && mainFed() - feeds(byId(mains[0].product_id)) >= mainTarget * 0.75) { set(mains[0], mains[0].quantity - 1); continue }
         const strongL = lines.find((l) => STRONG.includes(l.category));
-        const meatL = lines.filter((l) => l.role === 'meat').sort((a, b) => b.price / grillKind(b).feeds - a.price / grillKind(a).feeds);
-        const pizzaL = lines.filter((l) => l.role === 'meal').sort((a, b) => b.price - a.price);
-        if (extras.length > (food === 'snacks' ? 2 : 0)) { set(extras[0], extras[0].quantity - 1); continue }
-        if (beerL && beerL.quantity > roundQty(beer, people * 1)) { set(beerL, beerL.quantity - Number(beer.quantity_step || 2)); continue }
-        const cheapMeat = meats.slice().sort((a, b) => price(a.p) / a.g.feeds - price(b.p) / b.g.feeds)[0];
-        const dear = meatL.find((l) => cheapMeat && l.product_id !== cheapMeat.p.id && l.price / grillKind(l).feeds > price(cheapMeat.p) / cheapMeat.g.feeds + 1);
-        if (dear) { set(dear, dear.quantity - 1); add(cheapMeat.p, 1, 'meat'); continue }
-        const cheapPizza = pizzas.slice().sort((a, b) => price(a) - price(b))[0];
-        const dearP = pizzaL.find((l) => cheapPizza && l.price > price(cheapPizza));
-        if (dearP) { set(dearP, dearP.quantity - 1); add(cheapPizza, 1, 'meal'); continue }
-        const vegL = sides.find((l) => /овощ/i.test(l.name)), saladL = sides.find((l) => /салат/i.test(l.name));
-        if (vegL) { set(vegL, vegL.quantity - 1); continue }
-        if (saladL && saladL.quantity > Math.ceil(people / 5)) { set(saladL, saladL.quantity - 1); continue }
-        if (meatL.length && meatFed() > people * 0.75) { set(meatL[0], meatL[0].quantity - 1); continue }
-        if (pizzaL.length && pizzaL.reduce((s, l) => s + l.quantity, 0) > Math.ceil(people / 3)) { set(pizzaL[0], pizzaL[0].quantity - 1); continue }
         if (strongL && strongL.quantity > Math.ceil(people / 3)) { set(strongL, strongL.quantity - 1); continue }
-        if (beerL && beerL.quantity > roundQty(beer, people * 0.7)) { set(beerL, beerL.quantity - Number(beer.quantity_step || 2)); continue }
-        // Still too expensive for this menu: the last resort is to drop the cheapest-to-lose food entirely.
-        const any = lines.filter((l) => l.role !== 'drink').sort((a, b) => b.sum - a.sum)[0];
-        if (any) { set(any, any.quantity - 1); continue }
+        if (bl && bl.quantity - beerStep >= roundQty(beerP, people * 0.7)) { set(bl, bl.quantity - beerStep); continue }
+        if (cont.length) { set(cont[0], 0); continue }
+        const any = lines.filter((l) => l.role !== 'drink').sort((a, b) => b.sum - a.sum)[0] || lines.slice().sort((a, b) => b.sum - a.sum)[0];
+        if (any) { set(any, any.quantity - (any.unit === 'liter' ? beerStep : 1)); continue }
         break;
       }
     }
 
-    // 4. Money left: spend it the way the company would be happy — more meat up to a generous portion, then a real
-    //    beer snack, then a second salad, then more beer. Never nuts/chips as the filler of a big budget.
-    if (budget) {
-      let guard = 40;
-      const cheapest = () => Math.min(...ok.filter((p) => REAL_SNACKS.includes(slug(p)) || slug(p) === 'restaurant' || slug(p) === 'draft').map(price));
-      while (room() >= cheapest() && guard-- > 0) {
-        if (food === 'shashlik' && meatFed() < people * 1.3 && addMeat()) continue;
-        if (food === 'pizza' && lines.filter((l) => l.role === 'meal').reduce((s, l) => s + l.quantity, 0) < Math.ceil(people / 2)) {
-          const p = pizzas.filter((x) => price(x) <= room()).sort((a, b) => (line(a) ? 1 : 0) - (line(b) ? 1 : 0))[0];
-          if (p) { add(p, 1, 'meal'); continue }
-        }
-        if (lines.filter((l) => l.role === 'food' && REAL_SNACKS.includes(l.category)).length < Math.max(1, Math.ceil(people / 3)) && addSnack()) continue;
-        const salad = grill.find((x) => x.g.kind === 'salad');
-        if (food === 'shashlik' && salad && price(salad.p) <= room() && (line(salad.p) || { quantity: 0 }).quantity < Math.ceil(people / 2)) { add(salad.p, 1, 'side'); continue }
-        if (beer && line(beer) && line(beer).quantity < people * 2 && price(beer) * Number(beer.quantity_step || 2) <= room()) { add(beer, Number(beer.quantity_step || 2), 'drink'); continue }
-        if (food === 'shashlik' && meatFed() < people * 1.6 && addMeat()) continue;
-        if (addSnack()) continue;
-        break;
-      }
-    }
+    // 6. Money left — spend it on the same table: more of the main, the «keep drinking» snacks, more beer, salad.
+    const grow = () => {
+      const steps = [
+        () => mainFed() < mainTarget * 1.3 && addMain(true),
+        () => qtyOf('cont') < contTarget + 1 && addCont(true),
+        () => { const bl = beerL(); if (bl && bl.quantity < people * (beerTable ? 2.5 : 2) && price(beerP) * beerStep <= room()) { add(beerP, beerStep, 'drink'); return true } return false },
+        () => { const s = lines.find((l) => l.role === 'side' && /салат/i.test(l.name)); if (s && s.quantity < Math.ceil(people / 2) && s.price <= room()) { set(s, s.quantity + 1); return true } return false },
+        () => mainFed() < mainTarget * 1.6 && addMain(true),
+      ];
+      let guard = 60;
+      while (guard-- > 0 && room() > 0) { if (!steps.some((f) => f())) break }
+    };
+    if (budget) grow();
+    const base = lines.map((l) => ({ ...l }));
     const sum = total();
 
-    // 5. One honest upsell that still fits the budget (a real snack, not nuts).
-    let upsell = null;
-    const left = budget ? r2(budget - sum) : null;
-    const usedIds = new Set(lines.map((l) => l.product_id));
-    const extra = ok.filter((p) => REAL_SNACKS.includes(slug(p)) && !usedIds.has(p.id)).sort((a, b) => price(a) - price(b));
-    const fit = left === null ? extra[0] : extra.filter((p) => price(p) <= left).pop();
-    if (fit) upsell = { product_id: fit.id, name: fit.name, name_i18n: fit.name_i18n || null, price: price(fit), within_budget: true };
+    // 7. «Красивый стол»: ~+20% of the same table — the best skewer once more, a snack for later, more beer.
+    let upgrade = null;
+    {
+      cap = r2(sum * 1.2);
+      const ups = [
+        () => { const p = kinds[0] || best(mainList)[0]; if (p && price(p) <= room()) { add(p, 1, 'main'); return true } return false },
+        () => { const pool = contList.filter((p) => price(p) <= room()); const p = pool.find((x) => !line(x)) || pool[0]; if (p) { add(p, 1, 'cont'); return true } return false },
+        () => { if (beerP && line(beerP) && price(beerP) * beerStep <= room()) { add(beerP, beerStep, 'drink'); return true } return false },
+        () => { const c = best(slot('cheese_plate'))[0]; if (['wine', 'cold'].includes(scenario) && c && price(c) <= room()) { add(c, 1, 'side'); return true } return false },
+        () => { const p = kinds[1] || kinds[0]; if (p && price(p) <= room()) { add(p, 1, 'main'); return true } return false },
+      ];
+      let guard = 20, i = 0, idle = 0;
+      while (guard-- > 0 && idle < ups.length) { if (ups[i % ups.length]()) idle = 0; else idle++; i++ }
+      const added = lines.map((l) => { const b = base.find((x) => x.product_id === l.product_id); const q = r2(l.quantity - (b ? b.quantity : 0)); return q > 0 ? { product_id: l.product_id, name: l.name, name_i18n: l.name_i18n, unit: l.unit, quantity: q, sum: r2(l.price * q) } : null }).filter(Boolean);
+      const extra = r2(total() - sum);
+      if (added.length && extra >= sum * 0.08) upgrade = { add: added, extra, total: total(), items: lines.map((l) => ({ ...l })) };
+      lines.length = 0; base.forEach((l) => lines.push(l));
+    }
 
-    // 6. A ready «рывок» only when it really answers the request: right head count and most of the budget.
+    // 8. A ready «рывок» as an alternative only when it fits the head count and the money.
     const servesN = (b) => { const m = String(b.serves_label || '').match(/(\d+)(?:\s*[–-]\s*(\d+))?/); return m ? [Number(m[1]), Number(m[2] || m[1])] : null };
-    const bundleOk = (bundles || []).filter((b) => b.available !== false && Number(b.price) > 0 && (!budget || (Number(b.price) <= budget && Number(b.price) >= budget * 0.75)) &&
-      !(b.items || []).some((i) => { const p = (catalog || []).find((x) => x.id === i.product_id); return p && exclude.has(slug(p)) }));
-    const fitB = bundleOk.map((b) => { const s = servesN(b); const d = s ? (people < s[0] ? s[0] - people : people > s[1] ? people - s[1] : 0) : 9; return { b, d } })
-      .filter((x) => x.d === 0).sort((a, b) => Number(b.b.price) - Number(a.b.price))[0];
+    const fitB = (bundles || []).filter((b) => b.available !== false && b.unavailable_reason !== 'CLOSED_NOW' && Number(b.price) > 0 &&
+      (!budget || (Number(b.price) >= budget * 0.75 && Number(b.price) <= budget * 1.2)) &&
+      !(b.items || []).some((i) => { const p = (catalog || []).find((x) => x.id === i.product_id); return p && exclude.has(slug(p)) }))
+      .filter((b) => { const s = servesN(b); return s && people >= s[0] && people <= s[1] })
+      .sort((a, b) => Number(b.savings || 0) - Number(a.savings || 0))[0];
 
-    const order = { drink: 0, meat: 1, meal: 1, side: 2, food: 3 };
-    lines.sort((a, b) => order[a.role] - order[b.role]);
+    const order = { drink: 0, main: 1, side: 2, cont: 3 };
+    const sortLines = (l) => l.sort((a, b) => order[a.role] - order[b.role]);
+    sortLines(lines); if (upgrade) sortLines(upgrade.items);
     return {
-      people, budget, level, alcohol, food,
+      people, budget, level, alcohol, scenario,
       items: lines,
       total: sum,
-      left: left,
+      left: budget ? r2(budget - sum) : null,
       within_budget: budget ? sum <= budget : true,
       beer_liters: lines.filter((l) => l.category === 'draft').reduce((s, l) => s + l.quantity, 0),
-      upsell,
-      bundle: fitB ? { bundle_id: fitB.b.id, name: fitB.b.name, price: Number(fitB.b.price), serves: fitB.b.serves_label || null } : null,
+      upgrade,
+      bundle: fitB ? { bundle_id: fitB.id, name: fitB.name, price: Number(fitB.price), serves: fitB.serves_label || null, savings: Number(fitB.savings || 0) } : null,
     };
   }
 
-  window.PivkaReco = { recommend, STRONG, SNACKS };
+  window.PivkaReco = { recommend, STRONG, SNACKS, SCENARIOS };
 })();
