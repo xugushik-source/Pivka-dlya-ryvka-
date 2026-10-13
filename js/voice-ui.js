@@ -11,7 +11,7 @@
       ready: 'Нажми и говори', connecting: 'Подхожу к столику…', listening: 'Говори, я тебя слушаю', thinking: 'Подбираю…', speaking: 'Отвечаю…', reconnecting: 'Связь пропала, восстанавливаю…',
       ready_text: 'Напиши, что нужно', closed: 'Нажми и говори', local: 'Голосом сейчас не получится — пиши, соберу по тексту',
       you: 'Ты', seller: 'Аня', add: 'Добавить', change: 'Изменить', cart: 'Открыть корзину', end: 'Закончить разговор',
-      write: 'Или напиши', send: 'Отправить', total: 'Итого', tryAgain: 'Ещё раз',
+      write: '✍️ Или напиши Ане…', send: 'Отправить', total: 'Итого', tryAgain: 'Ещё раз',
       hint: 'Например: «Нас шестеро, бюджет 150 лари, пиво и закуска»', changeHint: 'Скажи или напиши, что поменять: «без рыбы», «пива побольше», «бюджет 100»',
       err: {
         mic_denied: 'Микрофон не разрешён — можно писать.', not_configured: 'Голосом пока не получится — пиши, соберу по тексту.',
@@ -28,7 +28,7 @@
       ready: 'დააჭირე და ილაპარაკე', connecting: 'მაგიდასთან მოვდივარ…', listening: 'ილაპარაკე, გისმენ', thinking: 'ვარჩევ…', speaking: 'გპასუხობ…', reconnecting: 'კავშირი გაწყდა, ვაღდგენ…',
       ready_text: 'დაწერე, რა გჭირდება', closed: 'დააჭირე და ილაპარაკე', local: 'ხმით ახლა ვერ გამოვა — დაწერე, ტექსტით შეგირჩევ',
       you: 'შენ', seller: 'ანი', add: 'დამატება', change: 'შეცვლა', cart: 'კალათის გახსნა', end: 'საუბრის დასრულება',
-      write: 'ან დაწერე', send: 'გაგზავნა', total: 'ჯამი', tryAgain: 'კიდევ ერთხელ',
+      write: '✍️ ან მისწერე ანის…', send: 'გაგზავნა', total: 'ჯამი', tryAgain: 'კიდევ ერთხელ',
       hint: 'მაგალითად: „ექვსნი ვართ, ბიუჯეტი 150 ლარია, ლუდი და მისაყოლებელი“', changeHint: 'თქვი ან დაწერე, რა შევცვალო: „თევზის გარეშე“, „მეტი ლუდი“, „ბიუჯეტი 100“',
       err: {
         mic_denied: 'მიკროფონი არ არის ნებადართული — შეგიძლია დაწერო.', not_configured: 'ხმით ჯერ ვერ გამოვა — დაწერე, ტექსტით შეგირჩევ.',
@@ -45,7 +45,7 @@
       ready: 'Սեղմիր և խոսիր', connecting: 'Գալիս եմ սեղանիդ…', listening: 'Խոսիր, լսում եմ քեզ', thinking: 'Ընտրում եմ…', speaking: 'Պատասխանում եմ…', reconnecting: 'Կապը կտրվեց, վերականգնում եմ…',
       ready_text: 'Գրիր՝ ինչ է պետք', closed: 'Սեղմիր և խոսիր', local: 'Ձայնով հիմա չի ստացվի — գրիր, կհավաքեմ տեքստով',
       you: 'Դու', seller: 'Անի', add: 'Ավելացնել', change: 'Փոխել', cart: 'Բացել զամբյուղը', end: 'Ավարտել զրույցը',
-      write: 'Կամ գրիր', send: 'Ուղարկել', total: 'Ընդամենը', tryAgain: 'Կրկին',
+      write: '✍️ Կամ գրիր Անիին…', send: 'Ուղարկել', total: 'Ընդամենը', tryAgain: 'Կրկին',
       hint: 'Օրինակ՝ «Վեց հոգի ենք, բյուջեն 150 լարի է, գարեջուր և խորտիկ»', changeHint: 'Ասա կամ գրիր՝ ինչ փոխել. «առանց ձկան», «ավելի շատ գարեջուր», «բյուջե 100»',
       err: {
         mic_denied: 'Խոսափողը թույլատրված չէ — կարող ես գրել։', not_configured: 'Ձայնով դեռ չի ստացվի — գրիր, կհավաքեմ տեքստով։',
@@ -99,7 +99,9 @@
 .vcartbox{border-color:#3ecf8e88}.vcartbox .vct{font-weight:900;font-size:13px;color:#3ecf8e;margin-bottom:2px}.vcartbox .vct+.line{border-top:0}
 .vbtns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}.vbtns button{border-radius:12px;padding:11px;font-weight:900;border:1px solid #3a4145;background:#1b2022;color:#fff}
 .vbtns .yes{background:#ffb51b;color:#171000;border-color:#ffb51b}.vbtns .end{grid-column:1/-1;background:transparent;color:#a9afb3}
-.vtext{display:flex;gap:8px;margin-top:6px}.vtext input{flex:1;min-width:0}.vtext button{border-radius:12px;padding:0 14px;font-weight:900;background:#ffb51b;color:#171000;border:0}
+.vtext{display:flex;gap:8px;width:100%;margin:10px 0 4px}.vtext input{flex:1;min-width:0;height:54px;padding:0 14px;font-size:17px;border-radius:14px;border:2px solid #ffb51b;background:#0f1214;color:#fff}
+.vtext input::placeholder{color:#c9cdd0}.vtext input:focus{outline:none;box-shadow:0 0 0 3px #ffb51b55}
+.vtext button{flex:0 0 54px;width:54px;height:54px;border-radius:14px;padding:0;font-size:22px;font-weight:900;background:#ffb51b;color:#171000;border:0}
 .verr{color:#ffb4b4;font-size:13px;text-align:center;margin:4px 0}.vfall{display:block;width:100%;margin-top:6px;background:transparent;border:1px dashed #3a4145;color:#ffcf6b;border-radius:12px;padding:10px;font-weight:800}`;
     document.head.appendChild(st);
   }
@@ -118,14 +120,13 @@
     ov.className = 'overlay'; ov.id = 'voiceOverlay';
     ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true');
     ov.innerHTML = `<div class="sheet"><div class="vtop"><h2 id="vTitle"></h2><button type="button" class="close" aria-label="×" id="vClose">×</button></div>
-<div class="vstage"><button type="button" class="vbig" id="vMic" aria-label="mic">${AVA}</button><div class="vstatus" id="vStatus" aria-live="polite"></div><div class="vhint" id="vHint"></div><div class="vnote" id="vNote"></div></div>
+<div class="vstage"><button type="button" class="vbig" id="vMic" aria-label="mic">${AVA}</button><div class="vstatus" id="vStatus" aria-live="polite"></div><form class="vtext" id="vForm" autocomplete="off"><input id="vInput" maxlength="300" enterkeyhint="send"><button type="submit" id="vSend"></button></form><div class="vhint" id="vHint"></div><div class="vnote" id="vNote"></div></div>
 <div class="verr" id="vErr" hidden></div>
 <div class="vmsg" id="vUser" hidden><small id="vUserL"></small><span></span></div>
 <div class="vmsg" id="vSeller" hidden><small id="vSellerL"></small><span></span></div>
 <div class="vreco" id="vReco" hidden></div>
 <div class="vreco vcartbox" id="vCartBox" hidden></div>
 <div class="vbtns"><button type="button" class="yes" id="vAdd" hidden></button><button type="button" id="vChange" hidden></button><button type="button" id="vCart"></button><button type="button" class="end" id="vEnd"></button></div>
-<form class="vtext" id="vForm" autocomplete="off"><input id="vInput" maxlength="300" enterkeyhint="send"><button type="submit" id="vSend"></button></form>
 <button type="button" class="vfall" id="vFall" hidden></button></div>`;
     document.body.appendChild(ov);
     $('vClose').onclick = close; $('vEnd').onclick = close;
@@ -147,7 +148,7 @@
     $('vCtaT').textContent = x.cta; $('vCtaS').textContent = x.ctaSub;
     $('vTitle').textContent = x.title; $('vNote').textContent = x.note || ''; $('vUserL').textContent = x.you; $('vSellerL').textContent = x.seller;
     $('vAdd').textContent = x.add; $('vChange').textContent = x.change; $('vCart').textContent = x.cart; $('vEnd').textContent = x.end;
-    $('vInput').placeholder = x.write; $('vSend').textContent = x.send; $('vFall').textContent = x.fallback;
+    $('vInput').placeholder = x.write; $('vSend').textContent = '➤'; $('vSend').setAttribute('aria-label', x.send); $('vFall').textContent = x.fallback;
     if (!$('vHint').dataset.custom) $('vHint').textContent = x.hint;
     paint();
     if (lastReco) renderReco(lastReco);
