@@ -310,6 +310,7 @@
       me.playing = false;
       log(me, 'audio_playback_completed', { ms: me.playAt ? Date.now() - me.playAt : null, cleared: t === 'output_audio_buffer.cleared' });
       if (me.closing) { setTimeout(() => { if (s === me) stop(me.closing) }, 600); return }
+      if (me.checkoutReady) { setTimeout(() => goCheckout(me), 300); return }
       refresh(me); return;
     }
     if (t === 'response.done') {
@@ -332,11 +333,14 @@
             continue;
           }
           if (PROGRESS.has(c.name)) me.progress = true;
+          const toCheckout = c.name === 'prepare_checkout';
           const t1 = Date.now();
           const result = await PivkaVoiceTools.run(c.name, c.arguments);
           log(me, 'tool_done', { name: c.name, ok: result && result.ok !== false, ms: Date.now() - t1 });
           if (s !== me) return;
           send(me, { type: 'conversation.item.create', item: { type: 'function_call_output', call_id: c.call_id, output: JSON.stringify(result) } });
+          // She says «приятного аппетита, жду тебя снова» first; the order form opens when her voice ends (8 s at most).
+          if (toCheckout && result && result.ok) { me.checkoutAfter = true; me.checkoutT = setTimeout(() => goCheckout(me), 9e3) }
         }
         me.tool = false;
         // She already said goodbye before calling end_conversation: hang up when her voice ends.
@@ -344,6 +348,7 @@
         me.wantResp = false;
         requestResponse(me);
       } else if (me.wantResp) requestResponse(me);
+      else if (me.checkoutAfter) { me.checkoutReady = true; if (!me.playing) setTimeout(() => goCheckout(me), 400) }
       refresh(me);
       return;
     }
@@ -355,6 +360,14 @@
       if (code === 'response_cancel_not_active') return;
       if (/expired|invalid_api_key|authentication/i.test(code + ' ' + (err.message || ''))) fail(me, 'openai');
     }
+  }
+
+  function goCheckout(me) {
+    if (s !== me || me.wentCheckout) return;
+    me.wentCheckout = true;
+    clearTimeout(me.checkoutT);
+    log(me, 'checkout_open');
+    try { PivkaVoiceTools.openCheckoutNow() } catch (e) { stop('checkout') }
   }
 
   // Typed text goes into the same conversation (same tools, same rules).
@@ -385,7 +398,7 @@
 
   function teardown(me) {
     me.timers.forEach(clearTimeout);
-    clearTimeout(me.idleT); clearTimeout(me.closeT); clearTimeout(me.noAnsT); clearTimeout(me.dropT);
+    clearTimeout(me.idleT); clearTimeout(me.closeT); clearTimeout(me.noAnsT); clearTimeout(me.dropT); clearTimeout(me.checkoutT);
     try { me.dc && (me.dc.onclose = null, me.dc.close()) } catch (e) {}
     try { me.pc && (me.pc.onconnectionstatechange = null, me.pc.getSenders().forEach((x) => x.track && x.track.stop())) } catch (e) {}
     try { me.mic && me.mic.getTracks().forEach((t) => t.stop()) } catch (e) {}
