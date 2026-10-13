@@ -218,11 +218,15 @@
     prepare_checkout() {
       if (!checkoutBundle && !Object.keys(cart).length) return fail('cart_empty');
       track('voice_checkout_open', { metadata: { total: r2(orderBase()) } });
-      // The answer goes back to the seller first; then the existing checkout opens and the voice sheet closes.
-      setTimeout(() => { listener({ type: 'checkout' }); openCheckout() }, 60);
+      // In a live voice talk she first says «приятного аппетита», then the agent opens the checkout (openCheckoutNow).
+      // Without a voice session (typed/local mode) the checkout opens right away.
+      const live = window.PivkaVoiceAgent && PivkaVoiceAgent.active();
+      if (!live) setTimeout(openCheckoutNow, 60);
       return { ok: true, opened: 'checkout', total: r2(orderBase()), note: 'The customer confirms the order in the form (age 18+, address, payment).' };
     },
   };
+
+  function openCheckoutNow() { listener({ type: 'checkout' }); openCheckout() }
 
   async function run(name, args) {
     const fn = Object.prototype.hasOwnProperty.call(TOOLS, name) ? TOOLS[name] : null;
@@ -233,5 +237,5 @@
     try { return await fn(a) } catch (e) { console.warn('voice tool', name, e); return fail('tool_failed') }
   }
 
-  window.PivkaVoiceTools = { run, names: Object.keys(TOOLS), onChange: (f) => { listener = typeof f === 'function' ? f : () => {} }, cartView, legalQty, lastReco: () => lastReco };
+  window.PivkaVoiceTools = { run, openCheckoutNow, names: Object.keys(TOOLS), onChange: (f) => { listener = typeof f === 'function' ? f : () => {} }, cartView, legalQty, lastReco: () => lastReco };
 })();
