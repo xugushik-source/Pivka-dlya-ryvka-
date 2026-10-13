@@ -24,8 +24,8 @@ const CONFIG = {
   newPerDay: Number(env("VOICE_NEW_PER_DAY", "30")), // TEMP test hour
   minGapSeconds: Number(env("VOICE_MIN_GAP_SECONDS", "5")), // TEMP test hour
   dailyLimit: Number(env("VOICE_DAILY_LIMIT", "50")),
-  maxSeconds: Number(env("VOICE_MAX_SECONDS", "300")),
-  newMaxSeconds: Number(env("VOICE_NEW_MAX_SECONDS", "240")),
+  maxSeconds: Number(env("VOICE_MAX_SECONDS", "120")), // a customer who already ordered: 2 min
+  newMaxSeconds: Number(env("VOICE_NEW_MAX_SECONDS", "240")), // the first talk before any order: 4 min
 };
 const ALLOWED = [
   /^https:\/\/(www\.)?pivkadlaryvka\.ge$/,
