@@ -47,8 +47,47 @@ const FOOD_NOTE = '🍕 Еду пекут под заказ (~{n} мин) — п
 const HOURS = {}, PREP = {};
 let catalogAll = [], hoursKey = '';
 const hm2min = t => { const [h, m] = String(t).split(':'); return +h * 60 + +m };
+// Pre-order: the customer picks a delivery time (Tbilisi). The storefront then shows what is sold at that time, with
+// that time's night prices and delivery fee; the server (create_*_preorder) checks the same as of that moment.
+let PRE = null;
+const atDate = () => PRE || new Date();
 function tbilisiMin() {
-  try { return hm2min(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tbilisi', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date())) } catch (e) { const d = new Date(); return d.getHours() * 60 + d.getMinutes() }
+  try { return hm2min(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tbilisi', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(atDate())) } catch (e) { const d = atDate(); return d.getHours() * 60 + d.getMinutes() }
+}
+const tbDay = d => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Tbilisi' });
+function preLabel(d) {
+  const day = tbDay(d) === tbDay(new Date()) ? tr('сегодня') : tbDay(d) === tbDay(new Date(Date.now() + 864e5)) ? tr('завтра')
+    : d.toLocaleDateString('ru-RU', { timeZone: 'Asia/Tbilisi', day: '2-digit', month: '2-digit' });
+  return day + ' ' + d.toLocaleTimeString('en-GB', { timeZone: 'Asia/Tbilisi', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+}
+// Half-hour slots from ~40 minutes ahead for two days.
+function preOptions() {
+  const step = 30 * 60e3, out = ['<option value="">' + esc(tr('Как можно скорее')) + '</option>'];
+  for (let t = Math.ceil((Date.now() + 40 * 60e3) / step) * step; t < Date.now() + 48 * 3600e3; t += step)
+    out.push('<option value="' + t + '"' + (PRE && +PRE === t ? ' selected' : '') + '>' + esc(preLabel(new Date(t))) + '</option>');
+  if (PRE && !out.some(o => o.includes('"' + +PRE + '"'))) out.splice(1, 0, '<option value="' + +PRE + '" selected>' + esc(preLabel(PRE)) + '</option>');
+  return out.join('')
+}
+function renderPreBar() {
+  const el = document.getElementById('preBar');
+  if (!el) return;
+  const closed = catalogAll.some(p => { const h = HOURS[p.id]; return h && h[0] && h[1] && !openNow(p) });
+  el.hidden = !PRE && !closed;
+  if (!el.hidden) el.innerHTML = '<label>🕐 ' + esc(tr(PRE ? 'Предзаказ — привезём к' : 'Предзаказ: выбери время — покажем всё, что будет в продаже')) +
+    '<select onchange="setPre(this.value)">' + preOptions() + '</select></label>';
+  if (typeof coWhen !== 'undefined' && coWhen) coWhen.innerHTML = preOptions()
+}
+function setPre(v) {
+  PRE = v ? new Date(+v) : null;
+  setCatalog(catalogAll);
+  // what is not sold at the new time leaves the cart (the server would refuse it)
+  Object.keys(cart).forEach(id => { if (!catalog.some(p => p.id === id)) delete cart[id] });
+  syncBundle();
+  renderNav();
+  renderAllPrices();
+  restoreCart();
+  if (checkoutFormAlive()) { coPickupTime.style.display = fulfillment === 'pickup' && !PRE ? 'block' : 'none'; refreshDeliveryQuote() }
+  track('preorder_time', { metadata: { at: PRE ? PRE.toISOString() : null } })
 }
 // «Осталось N», gone when 0: our own shelf (МАДО…) around the clock; the night assortment (23:00–10:00) from the
 // owner's night stock. Only what was entered into the stock can be sold.
@@ -74,7 +113,8 @@ function setCatalog(list) {
   catalog = list.filter(openNow);
   hoursKey = catalog.map(p => p.id).join();
   if (!catProducts(currentCat).length) currentCat = (CATS.find(c => catProducts(c.slug).length) || CATS[0]).slug;
-  renderHoursNote()
+  renderHoursNote();
+  renderPreBar()
 }
 function renderHoursNote() {
   const el = document.getElementById('hoursNote');
@@ -84,7 +124,7 @@ function renderHoursNote() {
   const text = beer && food ? (stockNight() ? '🌙 Ночью (23:00–10:00) — крепкое и закуска к нему. Магазин — с 10:00, пиво, пицца и хачапури — с 12:00.'
       : '☀️ Пиво, пицца, хачапури и ламаджо — с 12:00. Остальное уже везём.')
     : food ? '🍕 Пицца, хачапури и ламаджо — с 12:00. Пиво уже наливаем.' : '';
-  el.hidden = !text;
+  el.hidden = !text || !!PRE;
   el.textContent = text ? tr(text) : ''
 }
 // «⏱ ~15 мин» next to a dish (products.prep_minutes); lahmajo also says how many go into one oven load.
@@ -594,7 +634,19 @@ function removeBundle() {
   openCart()
 }
 
+// Рывки: the server says whether a Рывок is on sale now; for a pre-order it is re-checked against the chosen time.
+function preBundles() {
+  bundleCatalog.forEach(b => {
+    if (!('_av' in b)) { b._av = b.available; b._ur = b.unavailable_reason }
+    if (!PRE) { b.available = b._av; b.unavailable_reason = b._ur; return }
+    const can = b._av !== false || b._ur === 'CLOSED_NOW';
+    const ok = can && (b.items || []).every(i => { const p = catalogAll.find(x => x.id === i.product_id); return !p || openNow(p) });
+    b.available = ok;
+    b.unavailable_reason = ok ? null : can ? 'CLOSED_NOW' : b._ur
+  })
+}
 function syncBundle() {
+  preBundles();
   let id = checkoutBundle?.id;
   if (!id) try {
     id = localStorage.getItem('pivka_bundle')
@@ -629,6 +681,7 @@ function bundleItemsText(b) {
 }
 
 function renderBundles() {
+  preBundles();
   applyNight();
   // At night Рывки with beer or food are not sold: hide them instead of a wall of disabled cards.
   const shown = bundleCatalog.filter(b => b.unavailable_reason !== 'CLOSED_NOW');
@@ -666,7 +719,7 @@ function totals() {
 // ---------- Night prices and day/night delivery — the same rule the server applies to the order (public.night_pricing):
 // 00:00–08:00 Tbilisi every product and Рывок +10 %, rounded up to 0.50 ₾. Day prices are kept in p._day / b._day.
 let NIGHT = null, nightShown = null;
-const tbilisiHM = () => new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Tbilisi', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+const tbilisiHM = () => atDate().toLocaleTimeString('en-GB', { timeZone: 'Asia/Tbilisi', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 const inWin = (t, a, b) => a <= b ? t >= a && t < b : t >= a || t < b;
 const nightOn = () => !!NIGHT && Number(NIGHT.percent) > 0 && inWin(tbilisiHM(), NIGHT.from || '00:00', NIGHT.to || '08:00');
 function nightPrice(x) {
@@ -1148,7 +1201,7 @@ function setFulfillment(v) {
   pickupBtn.classList.toggle('on', v === 'pickup');
   coAddress.style.display = v === 'delivery' ? 'block' : 'none';
   coZone.style.display = v === 'delivery' ? 'block' : 'none';
-  coPickupTime.style.display = v === 'pickup' ? 'block' : 'none';
+  coPickupTime.style.display = v === 'pickup' && !PRE ? 'block' : 'none';
   updateCheckoutTotal();
   refreshDeliveryQuote()
 }
@@ -1162,7 +1215,9 @@ async function refreshDeliveryQuote() {
   if (!checkoutFormAlive()) return;
   const seq = ++quoteSeq;
   try {
-    const q = await retry(() => PIVKA_DB.deliveryQuote(fulfillment === 'delivery' ? coZone.value || null : null, coPhone.value.trim() || null, fulfillment));
+    const zone = fulfillment === 'delivery' ? coZone.value || null : null, phone = coPhone.value.trim() || null;
+    const q = PRE ? await retry(async () => { const x = await PIVKA_DB.client().rpc('delivery_quote_at', { p_zone: zone, p_phone: phone, p_fulfillment: fulfillment, p_subtotal: orderBase(), p_at: PRE.toISOString() }); if (x.error) throw x.error; return x.data })
+      : await retry(() => PIVKA_DB.deliveryQuote(zone, phone, fulfillment));
     if (seq !== quoteSeq || !checkoutFormAlive()) return;
     deliveryQuoteState = { fee: coZone.value || fulfillment !== 'delivery' || q.mode !== 'CHARGE' ? Number(q.fee) : null, reason: q.reason, mode: q.mode || 'CHARGE' }
   } catch (e) {
@@ -1212,6 +1267,7 @@ function openCheckout(bundle = null) {
     if (!coAddress.value && p.address) coAddress.value = p.address
   } catch (e) {}
   if (bundle) checkoutBundle = bundle;
+  coWhen.innerHTML = preOptions();
   const items = Object.values(cart);
   if (!checkoutBundle && !items.length) {
     cartHint.textContent = 'Добавь товар из каталога для оформления';
@@ -1275,7 +1331,7 @@ async function submitCheckout() {
         address
       }))
     } catch (e) {}
-    const pickupText = fulfillment === 'pickup' ? 'Самовывоз через ' + coPickupTime.value + ' мин' : '';
+    const pickupText = fulfillment === 'pickup' && !PRE ? 'Самовывоз через ' + coPickupTime.value + ' мин' : '';
     const payload = {
       name: coName.value.trim(),
       phone,
@@ -1290,7 +1346,14 @@ async function submitCheckout() {
       zoneId: fulfillment === 'delivery' ? coZone.value || null : null
     };
     let r;
-    if (checkoutBundle) r = await PIVKA_DB.createBundleOrder(payload);
+    if (PRE) {
+      const a = { p_name: payload.name, p_phone: payload.phone, p_fulfillment: fulfillment, p_address: address || '', p_payment: payload.payment || 'cash',
+        p_comment: payload.comment, p_items: items, p_zone: payload.zoneId, p_at: PRE.toISOString() };
+      const x = checkoutBundle ? await PIVKA_DB.client().rpc('create_bundle_preorder', { ...a, p_bundle: checkoutBundle.id, p_city: payload.cityId })
+        : await PIVKA_DB.client().rpc('create_store_preorder', a);
+      if (x.error) throw x.error;
+      r = x.data
+    } else if (checkoutBundle) r = await PIVKA_DB.createBundleOrder(payload);
     else r = await PIVKA_DB.createOrder(payload);
     if (window.pivkaSound) pivkaSound('order');
     track('order_complete', { bundleId: checkoutBundle?.id || null, metadata: { order_number: r.order_number, total: Number(r.total), campaign: campaignInfo(), src: visitSource() } });
@@ -1299,13 +1362,14 @@ async function submitCheckout() {
     } catch (e) {}
     // The order has its own page (status, «Рывок» game, chat with us) — no WhatsApp, no phone number.
     const orderUrl = r.order_id ? new URL('order.html?o=' + r.order_id, location.href.split(/[?#]/)[0].replace(/[^/]*$/, '')).href : '';
-    checkoutBody.innerHTML = `<div class="success"><div class="big">🍻</div><h2>Рывок принят!</h2><p class="muted">Заказ №${r.order_number}<br>Сумма: ${money(r.total)}</p>${orderUrl ? `<a class="yellow checkout" style="display:block;text-decoration:none" href="${orderUrl}">Мой заказ и статус →</a>${['transfer', 'ru_card'].includes(coPayment.value) ? '<button type="button" class="yellow checkout" data-chat style="display:block;width:100%;border:0;cursor:pointer">📷 Отправить скриншот перевода</button>' : ''}<button type="button" class="skip" data-chat>💬 Вопрос по заказу? Напишите нам в чат</button>` : ''}<button class="skip" onclick="try{sessionStorage.setItem('pivka_intro_short','1')}catch(e){};location.reload()">Готово</button></div>`;
+    checkoutBody.innerHTML = `<div class="success"><div class="big">🍻</div><h2>Рывок принят!</h2><p class="muted">Заказ №${r.order_number}<br>${r.scheduled_for ? '🕐 ' + esc(tr('Предзаказ — привезём к')) + ' ' + esc(preLabel(new Date(r.scheduled_for))) + '<br>' : ''}Сумма: ${money(r.total)}</p>${orderUrl ? `<a class="yellow checkout" style="display:block;text-decoration:none" href="${orderUrl}">Мой заказ и статус →</a>${['transfer', 'ru_card'].includes(coPayment.value) ? '<button type="button" class="yellow checkout" data-chat style="display:block;width:100%;border:0;cursor:pointer">📷 Отправить скриншот перевода</button>' : ''}<button type="button" class="skip" data-chat>💬 Вопрос по заказу? Напишите нам в чат</button>` : ''}<button class="skip" onclick="try{sessionStorage.setItem('pivka_intro_short','1')}catch(e){};location.reload()">Готово</button></div>`;
     // The same status card as on the home page.
     checkoutBody.querySelector('.success').insertAdjacentHTML('beforeend', '<div id="orderTrack" class="trackCard" hidden></div>');
     document.querySelector('#todaySection #orderTrack')?.remove();
     refreshTrack();
     Object.keys(cart).forEach(k => delete cart[k]);
     checkoutBundle = null;
+    if (PRE) { PRE = null; setCatalog(catalogAll); renderNav(); renderAllPrices() }
     try {
       localStorage.removeItem('pivka_cart');
       localStorage.removeItem('pivka_bundle')

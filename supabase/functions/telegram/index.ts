@@ -57,7 +57,7 @@ const PAY: Record<string, string> = { CASH: "💵 наличные", CARD: "💳
 async function loadOrder(orderId: string) {
   const { data: o, error } = await db.from("orders")
     .select("id,order_number,status,fulfillment_type,address_snapshot,payment_method,discount_total,delivery_fee,total,comment," +
-      "created_at,confirmed_at,ready_at,delivered_at,cancellation_reason,city_id,from_stock," +
+      "created_at,confirmed_at,ready_at,delivered_at,cancellation_reason,city_id,from_stock,scheduled_for," +
       "customers(full_name,phone),service_cities(name),delivery_zones(name)," +
       "order_items(name_snapshot,quantity,unit_snapshot,unit_price_snapshot,line_total,is_gift,supplier_id,supplier_cost_snapshot,products(prep_minutes,prep_batch))," +
       "delivery_assignments(driver_id,drivers(name)),order_collections(method,created_at)," +
@@ -73,7 +73,9 @@ function orderBody(o: any) {
   const items = (o.order_items || []) as any[];
   const delivery = o.fulfillment_type === "delivery";
   const c = o.customers || {};
+  const note = o.scheduled_for ? String(o.comment || "").replace(/^🕐 Предзаказ на [^|]*\|?\s*/, "") : o.comment;
   return [
+    o.scheduled_for ? `🕐 <b>ПРЕДЗАКАЗ на ${time(o.scheduled_for)}</b> — привезти к этому времени, не раньше` : null,
     `📍 ${esc(o.service_cities?.name || "")} · ${delivery ? "🚗 Доставка" : "🏪 Самовывоз"}`,
     `👤 ${esc(c.full_name || "Без имени")} · ${esc(c.phone || "")}`,
     delivery ? `🏠 ${esc(o.address_snapshot || "—")}${o.delivery_zones?.name ? " · " + esc(o.delivery_zones.name) : ""}` : null,
@@ -85,7 +87,7 @@ function orderBody(o: any) {
     Number(o.discount_total) > 0 ? `Скидка рывка: −${money(o.discount_total)}` : null,
     delivery ? `Доставка: ${money(o.delivery_fee)}` : null,
     `<b>Итого: ${money(o.total)}</b> · ${o.payment_method === "transfer" ? "📲 Переводом" : o.payment_method === "ru_card" ? "🇷🇺 Рос. картой (сумма в ₽ — в комментарии)" : "💵 Наличными"}`,
-    o.comment ? `💬 ${esc(o.comment)}` : null,
+    note ? `💬 ${esc(note)}` : null,
   ].filter((l) => l !== null).join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
@@ -272,7 +274,9 @@ function foodMinutes(items: any[]) {
 const prepMinutes = (o: any) => Math.max(basePrep(o), foodMinutes(o.order_items || []));
 const ownPrep = (o: any, supplierId: string) => Math.max(basePrep(o), foodMinutes(supplierItems(o, supplierId)));
 const hasHotFood = (o: any) => foodMinutes(o.order_items || []) > 0;
-const pickupAt = (o: any) => new Date(new Date(o.confirmed_at || o.created_at).getTime() + prepMinutes(o) * 60000).toISOString();
+// Pre-order: the courier collects ~20 minutes before the promised time, never earlier than the usual prep.
+const pickupAt = (o: any) => new Date(Math.max(new Date(o.confirmed_at || o.created_at).getTime() + prepMinutes(o) * 60000,
+  o.scheduled_for ? new Date(o.scheduled_for).getTime() - 20 * 60000 : 0)).toISOString();
 // Courier / owner: when the food is ready and in which order to collect.
 const foodLine = (o: any) => hasHotFood(o) && ["NEW", "CONFIRMED"].includes(o.status)
   ? `\n🍕 <b>Горячая еда${o.confirmed_at ? " будет готова к " + hm(pickupAt(o)) : " готовится ~" + prepMinutes(o) + " мин"}</b> — сначала забери напитки, еду последней, чтобы привезти всё вместе и горячим.`
@@ -288,9 +292,10 @@ function supplierText(o: any, supplierId: string) {
   const sum = items.reduce((t, i) => t + Number(i.supplier_cost_snapshot || 0) * Number(i.quantity), 0);
   const g = ((o.supplier_order_groups || []) as any[]).find((x) => x.supplier_id === supplierId) || {};
   return [
-    hot && slowest
+    o.scheduled_for ? `🕐 <b>ПРЕДЗАКАЗ</b> — клиенту к ${time(o.scheduled_for)}, сейчас не собирать` : null,
+    hot && slowest && !o.scheduled_for
       ? `🔥 <b>Заказ №${o.order_number}</b> · готовить сразу, курьер заберёт горячим к ${hm(due)}`
-      : `📦 <b>Заказ №${o.order_number}</b> · подготовить к ${hm(due)}${hot ? "" : ` (${prepMinutes(o)} мин)`}`,
+      : `📦 <b>Заказ №${o.order_number}</b> · подготовить к ${o.scheduled_for ? time(due) : hm(due)}${hot || o.scheduled_for ? "" : ` (${prepMinutes(o)} мин)`}`,
     hot && !slowest ? `🍕 В заказе горячая еда — курьер приедет к ${hm(due)}. Подготовьте к этому времени, пиво держите в холоде.` : null,
     o.fulfillment_type === "delivery" ? `🛵 Заберёт: ${esc(o.driverName || "курьер")}` : "🏪 Самовывоз",
     "",
