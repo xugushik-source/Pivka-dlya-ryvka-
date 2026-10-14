@@ -10,7 +10,7 @@ let catalog = [],
   fulfillment = 'delivery',
   checkoutBundle = null,
   socialType = 'TREAT',
-  currentCat = 'restaurant',
+  currentCat = 'shawarma',
   nameI18n = {},
   categoryRows = [],
   catById = {},
@@ -25,6 +25,7 @@ const CATS = [
   { slug: 'strong', ico: '🥃', label: 'Крепкое', title: 'Крепкие напитки', grp: 'alc', group: STRONG_GROUP },
   { slug: 'wine', ico: '🍷', label: 'Вино', title: 'Вино', grp: 'alc' },
   { slug: 'pizza', ico: '🍕', label: 'Пицца и хачапури', title: 'Пицца и хачапури', grp: 'food' },
+  { slug: 'shawarma', ico: '🌯', label: 'Шаурма', title: 'Шаурма на мангале', grp: 'food' },
   { slug: 'restaurant', ico: '🍢', label: 'Ресторан', title: 'Ресторанные блюда', grp: 'food' },
   { slug: 'fish', ico: '🐟', label: 'Рыба', title: 'Рыба', grp: 'food' },
   { slug: 'meat-snacks', ico: '🥩', label: 'Мясное', title: 'Мясные закуски', grp: 'food' },
@@ -166,8 +167,8 @@ const SUB_LABEL = {
   strong: ['ликёры', 'ლიქიორები', 'լիկյորներ'], rum: ['ром', 'რომი', 'ռոմ'], gin: ['джин', 'ჯინი', 'ջին'], tequila: ['текила', 'ტეკილა', 'տեկիլա']
 };
 // Real photos for section tiles (assets/cat): scene crops from the bar photo, or real packshots on the same bar backdrop.
-const CAT_IMG = ['draft', 'strong', 'wine', 'pizza', 'restaurant', 'fish', 'meat-snacks', 'cheese', 'nuts', 'chips', 'snacks', 'soft-drinks', 'energy', 'salty', 'seafood', 'frozen', 'supplies'];
-const catImg = slug => CAT_IMG.includes(slug) ? './assets/cat/' + slug + '.jpg?v=20261012e' : '';
+const CAT_IMG = ['shawarma', 'draft', 'strong', 'wine', 'pizza', 'restaurant', 'fish', 'meat-snacks', 'cheese', 'nuts', 'chips', 'snacks', 'soft-drinks', 'energy', 'salty', 'seafood', 'frozen', 'supplies'];
+const catImg = slug => CAT_IMG.includes(slug) ? './assets/cat/' + slug + '.jpg?v=20261014a' : '';
 const LI = () => ({ ru: 0, ka: 1, hy: 2 }[lang()] || 0);
 const tr = s => (window.PIVKA_I18N ? PIVKA_I18N.translate(s, lang()) : s);
 function catConf(slug) {
@@ -1061,8 +1062,8 @@ function finishUpsellCategory() {
 }
 
 // ---------- Category navigation: big tiles for the first choice, compact sticky nav afterwards.
-// Owner's priority on the storefront: restaurant dishes, beer, pizza, strong — then everything else.
-const TOP_CATS = ['restaurant', 'draft', 'pizza', 'strong'];
+// Owner's priority on the storefront: shawarma, restaurant dishes, pizza, beer, strong — then everything else.
+const TOP_CATS = ['shawarma', 'restaurant', 'pizza', 'draft', 'strong'];
 function renderNav() {
   const vis = CATS.filter(c => catProducts(c.slug).length);
   const top = TOP_CATS.map(s => vis.find(c => c.slug === s)).filter(Boolean);
