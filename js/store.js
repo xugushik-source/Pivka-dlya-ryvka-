@@ -363,6 +363,38 @@ async function referralCard(orderId) {
       '<button type="button" class="yellow checkout" onclick="shareRef(\'' + esc(link) + '\')">' + esc(tr('Отправить ссылку другу')) + '</button></div>'
   } catch (e) { return '' }
 }
+// Home page: anyone gets the personal link by phone — no order needed (virality first).
+function openRef() {
+  try {
+    const p = JSON.parse(localStorage.getItem('pivka_profile') || '{}');
+    if (!refPhone.value && p.phone) refPhone.value = p.phone;
+    if (!refName.value && p.name) refName.value = p.name
+  } catch (e) {}
+  refError.textContent = '';
+  openSheet('refOverlay');
+  track('ref_open')
+}
+async function getRefLink() {
+  refError.textContent = '';
+  const phone = refPhone.value.trim();
+  if (phone.replace(/\D/g, '').length < 9) { refError.textContent = tr('Укажи номер телефона'); return }
+  refGo.disabled = true;
+  try {
+    const r = await PIVKA_DB.client().rpc('my_ref_link', { p_phone: phone, p_name: refName.value.trim() || null });
+    if (r.error) throw r.error;
+    const d = r.data, link = location.origin + location.pathname.replace(/[^/]*$/, '') + '?ref=' + d.code;
+    try { const p = JSON.parse(localStorage.getItem('pivka_profile') || '{}'); localStorage.setItem('pivka_profile', JSON.stringify({ ...p, phone, name: refName.value.trim() || p.name || '' })) } catch (e) {}
+    refOut.innerHTML = '<div class="refCard"><b>🔗 ' + esc(tr('Твоя ссылка')) + '</b>' +
+      (Number(d.balance) > 0 || Number(d.friends) > 0 ? '<span>' + esc(tr('У тебя')) + ': <b>' + money(d.balance) + '</b> · ' + esc(tr('друзей')) + ': ' + Number(d.friends) + '</span>' : '') +
+      '<input readonly value="' + esc(link) + '" onclick="this.select()">' +
+      '<button type="button" class="yellow checkout" onclick="shareRef(\'' + esc(link) + '\')">' + esc(tr('Отправить ссылку другу')) + '</button></div>';
+    refGo.hidden = true;
+    track('ref_link', { metadata: { friends: Number(d.friends) || 0 } })
+  } catch (e) {
+    refError.textContent = e.message || tr('Не получилось. Попробуй ещё раз.')
+  }
+  refGo.disabled = false
+}
 async function shareRef(link) {
   const text = tr('Пивка для рывка — пиво, шашлык и закуска с доставкой. Заказывай по моей ссылке:') + ' ' + link;
   try { if (navigator.share) return await navigator.share({ text, url: link }) } catch (e) { return }
