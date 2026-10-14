@@ -1129,6 +1129,7 @@ function renderRuCard() {
   const k = ruRate * (1 + Number(ruCard.markup || 15) / 100);
   box.innerHTML = '<div class="rusum">' + esc(tr('К оплате')) + ': <b>' + ruAmount(gel).toLocaleString('ru-RU') + ' ₽</b></div>' +
     '<div class="muted">' + esc(tr('Курс ЦБ сегодня')) + ' ' + ruRate.toFixed(2) + ' ₽ + ' + Number(ruCard.markup || 15) + '% ' + esc(tr('за комфорт оплаты из России')) + ' = ' + k.toFixed(2) + ' ₽ ' + esc(tr('за 1 ₾')) + '</div>' +
+    (ruCard.pay_url ? '<a class="yellow paylink" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none" href="' + esc(ruCard.pay_url) + '">' + esc(tr('Оплатить в рублях')) + ' →</a>' : '') +
     (ruCard.card ? '<div class="rurow">💳 ' + esc(ruCard.card) + (ruCard.bank ? ' · ' + esc(ruCard.bank) : '') + '</div>' : '') +
     (ruCard.sbp_phone ? '<div class="rurow">📱 ' + esc(tr('СБП по номеру')) + ' ' + esc(ruCard.sbp_phone) + '</div>' : '') +
     (ruCard.holder ? '<div class="muted">' + esc(tr('Получатель')) + ': ' + esc(ruCard.holder) + '</div>' : '') +
