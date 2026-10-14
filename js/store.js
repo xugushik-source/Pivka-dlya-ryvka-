@@ -1102,10 +1102,44 @@ async function changeCity(id) {
   }
 }
 
-function syncPaymentLinks() {
-  paymentLinks.style.display = coPayment.value === 'transfer' ? 'block' : 'none'
+// Payment from a Russian card: shown only when the owner filled the details (store_settings «ru_card»).
+// Amount in ₽ = total × Bank of Russia rate for GEL × (1 + markup), markup 15% — «за комфорт».
+let ruCard = null, ruRate = null;
+async function loadRuCard() {
+  try {
+    const r = await PIVKA_DB.client().rpc('ru_card_info');
+    if (r.error || !r.data) return;
+    const j = await (await fetch('https://www.cbr-xml-daily.ru/daily_json.js')).json();
+    const g = j && j.Valute && j.Valute.GEL;
+    if (!g || !(g.Value > 0)) return;
+    ruRate = g.Value / (g.Nominal || 1);
+    ruCard = r.data;
+    if (![...coPayment.options].some(o => o.value === 'ru_card')) coPayment.insertAdjacentHTML('beforeend', '<option value="ru_card">' + esc(tr('🇷🇺 Российской картой (+15%)')) + '</option>');
+    syncPaymentLinks();
+  } catch (e) {}
 }
-coPayment.addEventListener('change', syncPaymentLinks);
+const ruAmount = gel => Math.ceil(gel * ruRate * (1 + Number(ruCard.markup || 15) / 100) / 10) * 10;
+function renderRuCard() {
+  let box = document.getElementById('ruCardBox');
+  if (!box) { box = document.createElement('div'); box.id = 'ruCardBox'; box.className = 'rucard'; paymentLinks.insertAdjacentElement('afterend', box) }
+  const on = coPayment.value === 'ru_card' && ruCard;
+  box.style.display = on ? 'block' : 'none';
+  if (!on) return;
+  const gel = orderBase() + currentDeliveryFee();
+  const k = ruRate * (1 + Number(ruCard.markup || 15) / 100);
+  box.innerHTML = '<div class="rusum">' + esc(tr('К оплате')) + ': <b>' + ruAmount(gel).toLocaleString('ru-RU') + ' ₽</b></div>' +
+    '<div class="muted">' + esc(tr('Курс ЦБ сегодня')) + ' ' + ruRate.toFixed(2) + ' ₽ + ' + Number(ruCard.markup || 15) + '% ' + esc(tr('за комфорт оплаты из России')) + ' = ' + k.toFixed(2) + ' ₽ ' + esc(tr('за 1 ₾')) + '</div>' +
+    (ruCard.card ? '<div class="rurow">💳 ' + esc(ruCard.card) + (ruCard.bank ? ' · ' + esc(ruCard.bank) : '') + '</div>' : '') +
+    (ruCard.sbp_phone ? '<div class="rurow">📱 ' + esc(tr('СБП по номеру')) + ' ' + esc(ruCard.sbp_phone) + '</div>' : '') +
+    (ruCard.holder ? '<div class="muted">' + esc(tr('Получатель')) + ': ' + esc(ruCard.holder) + '</div>' : '') +
+    '<div class="muted payhint">' + esc(tr('Переведите сумму в рублях и отправьте скриншот в чат.')) + '</div>' +
+    '<button type="button" class="yellow paylink" data-chat style="width:100%;border:0;cursor:pointer">' + esc(tr('📷 Отправить скриншот перевода')) + '</button>';
+}
+function syncPaymentLinks() {
+  paymentLinks.style.display = coPayment.value === 'transfer' ? 'block' : 'none';
+  renderRuCard()
+}
+coPayment.addEventListener('change', () => { syncPaymentLinks(); updateCheckoutTotal() });
 
 function setFulfillment(v) {
   fulfillment = v;
@@ -1160,7 +1194,8 @@ function updateCheckoutTotal() {
   const opt = coZone.options[coZone.selectedIndex];
   const fee = currentDeliveryFee();
   const mode = deliveryQuoteState.mode;
-  coTotal.textContent = money(base + fee);
+  coTotal.textContent = money(base + fee) + (coPayment.value === 'ru_card' && ruCard ? ' ≈ ' + ruAmount(base + fee).toLocaleString('ru-RU') + ' ₽' : '');
+  renderRuCard();
   checkoutNotice.style.display = fulfillment === 'delivery' ? 'block' : 'none';
   const min = opt?.dataset?.min && Number(opt.dataset.min) ? ' · Минимальный заказ ' + money(opt.dataset.min) : '';
   const feeText = deliveryQuoteState.reason === 'FREE_FROM' ? 'Доставка бесплатно — заказ от ' + deliveryRule().free + ' ₾' : deliveryQuoteState.reason === 'ZONE' && fee > 0 ? 'Доставка: ' + money(fee) + ' · от ' + deliveryRule().free + ' ₾ — бесплатно' : deliveryQuoteState.reason === 'PASS_SMALL' ? 'Доставка: ' + money(fee) + ' · с PASS от 30 ₾ — бесплатно' : deliveryQuoteState.reason === 'PASS' ? 'Доставка: 0 ₾ — PASS' : mode === 'HIDDEN' ? '' : mode === 'FREE' ? 'Доставка бесплатно' : 'Доставка: ' + money(fee);
@@ -1246,7 +1281,8 @@ async function submitCheckout() {
       fulfillment,
       address,
       payment: coPayment.value,
-      comment: (pickupText ? pickupText + (coComment.value.trim() ? ' | ' : '') : '') + coComment.value.trim() + (currentCity ? ' | Город: ' + currentCity.name : '') + (coZone.value && fulfillment === 'delivery' ? ' | Зона: ' + coZone.options[coZone.selectedIndex].text : ''),
+      comment: (pickupText ? pickupText + (coComment.value.trim() ? ' | ' : '') : '') + coComment.value.trim() + (currentCity ? ' | Город: ' + currentCity.name : '') + (coZone.value && fulfillment === 'delivery' ? ' | Зона: ' + coZone.options[coZone.selectedIndex].text : '') +
+        (coPayment.value === 'ru_card' && ruCard ? ' | 🇷🇺 Оплата с российской карты: ' + ruAmount(orderBase() + currentDeliveryFee()) + ' ₽ (курс ЦБ ' + ruRate.toFixed(2) + ' + ' + Number(ruCard.markup || 15) + '%)' : ''),
       items,
       bundleId: checkoutBundle?.id,
       cityId: currentCity?.id || null,
@@ -1262,7 +1298,7 @@ async function submitCheckout() {
     } catch (e) {}
     // The order has its own page (status, «Рывок» game, chat with us) — no WhatsApp, no phone number.
     const orderUrl = r.order_id ? new URL('order.html?o=' + r.order_id, location.href.split(/[?#]/)[0].replace(/[^/]*$/, '')).href : '';
-    checkoutBody.innerHTML = `<div class="success"><div class="big">🍻</div><h2>Рывок принят!</h2><p class="muted">Заказ №${r.order_number}<br>Сумма: ${money(r.total)}</p>${orderUrl ? `<a class="yellow checkout" style="display:block;text-decoration:none" href="${orderUrl}">Мой заказ и статус →</a>${coPayment.value === 'transfer' ? '<button type="button" class="yellow checkout" data-chat style="display:block;width:100%;border:0;cursor:pointer">📷 Отправить скриншот перевода</button>' : ''}<button type="button" class="skip" data-chat>💬 Вопрос по заказу? Напишите нам в чат</button>` : ''}<button class="skip" onclick="try{sessionStorage.setItem('pivka_intro_short','1')}catch(e){};location.reload()">Готово</button></div>`;
+    checkoutBody.innerHTML = `<div class="success"><div class="big">🍻</div><h2>Рывок принят!</h2><p class="muted">Заказ №${r.order_number}<br>Сумма: ${money(r.total)}</p>${orderUrl ? `<a class="yellow checkout" style="display:block;text-decoration:none" href="${orderUrl}">Мой заказ и статус →</a>${['transfer', 'ru_card'].includes(coPayment.value) ? '<button type="button" class="yellow checkout" data-chat style="display:block;width:100%;border:0;cursor:pointer">📷 Отправить скриншот перевода</button>' : ''}<button type="button" class="skip" data-chat>💬 Вопрос по заказу? Напишите нам в чат</button>` : ''}<button class="skip" onclick="try{sessionStorage.setItem('pivka_intro_short','1')}catch(e){};location.reload()">Готово</button></div>`;
     // The same status card as on the home page.
     checkoutBody.querySelector('.success').insertAdjacentHTML('beforeend', '<div id="orderTrack" class="trackCard" hidden></div>');
     document.querySelector('#todaySection #orderTrack')?.remove();
@@ -1374,6 +1410,7 @@ observeNav();
   try {
     [catalog, bundleCatalog, giftTiers, upsellRules, cities, categoryRows] = await Promise.all([retry(() => PIVKA_DB.listCatalog()), PIVKA_DB.listBundles(localStorage.getItem('pivka_city')).catch(() => []), PIVKA_DB.listGiftTiers().catch(() => []), PIVKA_DB.listUpsellRules().catch(() => []), retry(() => PIVKA_DB.listCities()), PIVKA_DB.listCategories().catch(() => [])]);
     giftTiers = groupGiftTiers(giftTiers);
+    loadRuCard();
     await loadStock();
     categoryRows.forEach(c => catById[c.id] = c);
     catalog.forEach(p => {
