@@ -57,7 +57,7 @@ const PAY: Record<string, string> = { CASH: "💵 наличные", CARD: "💳
 async function loadOrder(orderId: string) {
   const { data: o, error } = await db.from("orders")
     .select("id,order_number,status,fulfillment_type,address_snapshot,payment_method,discount_total,delivery_fee,total,comment," +
-      "created_at,confirmed_at,ready_at,delivered_at,cancellation_reason,city_id,from_stock,scheduled_for," +
+      "created_at,confirmed_at,ready_at,delivered_at,cancellation_reason,city_id,from_stock,scheduled_for,bonus_used," +
       "customers(full_name,phone),service_cities(name),delivery_zones(name)," +
       "order_items(name_snapshot,quantity,unit_snapshot,unit_price_snapshot,line_total,is_gift,supplier_id,supplier_cost_snapshot,products(prep_minutes,prep_batch))," +
       "delivery_assignments(driver_id,drivers(name)),order_collections(method,created_at)," +
@@ -76,6 +76,7 @@ function orderBody(o: any) {
   const note = o.scheduled_for ? String(o.comment || "").replace(/^🕐 Предзаказ на [^|]*\|?\s*/, "") : o.comment;
   return [
     o.scheduled_for ? `🕐 <b>ПРЕДЗАКАЗ на ${time(o.scheduled_for)}</b> — привезти к этому времени, не раньше` : null,
+    Number(o.bonus_used) > 0 ? `💎 <b>ЗАКАЗ С БАЛЛАМИ −${money(o.bonus_used)}</b> — без скидок и подарков, сумма уже уменьшена` : null,
     `📍 ${esc(o.service_cities?.name || "")} · ${delivery ? "🚗 Доставка" : "🏪 Самовывоз"}`,
     `👤 ${esc(c.full_name || "Без имени")} · ${esc(c.phone || "")}`,
     delivery ? `🏠 ${esc(o.address_snapshot || "—")}${o.delivery_zones?.name ? " · " + esc(o.delivery_zones.name) : ""}` : null,
@@ -85,6 +86,7 @@ function orderBody(o: any) {
     ...items.filter((i) => i.is_gift).map((i) => `🎁 ${esc(i.name_snapshot)} — ${qty(i.quantity, i.unit_snapshot)} (подарок)`),
     "",
     Number(o.discount_total) > 0 ? `Скидка рывка: −${money(o.discount_total)}` : null,
+    Number(o.bonus_used) > 0 ? `💎 Баллами: −${money(o.bonus_used)}` : null,
     delivery ? `Доставка: ${money(o.delivery_fee)}` : null,
     `<b>Итого: ${money(o.total)}</b> · ${o.payment_method === "transfer" ? "📲 Переводом" : o.payment_method === "ru_card" ? "🇷🇺 Рос. картой (сумма в ₽ — в комментарии)" : "💵 Наличными"}`,
     note ? `💬 ${esc(note)}` : null,
