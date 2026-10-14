@@ -84,7 +84,7 @@ function orderBody(o: any) {
     "",
     Number(o.discount_total) > 0 ? `Скидка рывка: −${money(o.discount_total)}` : null,
     delivery ? `Доставка: ${money(o.delivery_fee)}` : null,
-    `<b>Итого: ${money(o.total)}</b> · ${o.payment_method === "transfer" ? "📲 Переводом" : "💵 Наличными"}`,
+    `<b>Итого: ${money(o.total)}</b> · ${o.payment_method === "transfer" ? "📲 Переводом" : o.payment_method === "ru_card" ? "🇷🇺 Рос. картой (сумма в ₽ — в комментарии)" : "💵 Наличными"}`,
     o.comment ? `💬 ${esc(o.comment)}` : null,
   ].filter((l) => l !== null).join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
