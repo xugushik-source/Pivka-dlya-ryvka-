@@ -13,6 +13,7 @@
   const copy = {
     ru: {
       frames: [['<span>ПИВКА</span><span>ДЛЯ РЫВКА</span>', 1700, 'brand'],
+        ['🤝 Перешли другу ссылку<span class="sub">и получи 50% с его заказа — баллами на твой счёт</span>', 2600],
         ['🔥 Готовые рывки<span class="sub">Пиво и закуска уже собраны — выбрал и готово</span>', 2300],
         ['🎁 Угости друга<span class="sub">Ты платишь — мы привозим ему</span>', 2200],
         ['🏆 Спорим на пиво?<span class="sub">Проиграл — угощаешь</span>', 2200],
@@ -21,10 +22,12 @@
         ['🎮 Игра «Рывок»<span class="sub">Курьер выехал — играй, пока везём. 3 попытки с каждого заказа, лучший за месяц выигрывает 4 порции шашлыка</span>', 3400],
         ['🌙 С 00:00 до 08:00 — цены +10 %<span class="sub">Доставка днём 3 ₾, бесплатно от 50 ₾ · после 23:00 — 7 ₾, бесплатно от 80 ₾</span>', 3200]],
       cta: 'ПЕРЕЙТИ К ЗАКАЗУ →', hint: 'Чтобы сразу перейти к заказу — нажмите кнопку', help: 'Нужна помощь с заказом?',
-      night: '🌙 00:00–08:00 цены +10 % · доставка после 23:00 — 7 ₾'
+      night: '🌙 00:00–08:00 цены +10 % · доставка после 23:00 — 7 ₾',
+      ref: '🤝 Перешли другу ссылку — получи 50% с его заказа'
     },
     ka: {
       frames: [['<span>ლუდი</span><span>გაქანებისთვის</span>', 1700, 'brand'],
+        ['🤝 გაუგზავნე მეგობარს ბმული<span class="sub">და მიიღე მისი შეკვეთის 50% — ქულებით შენს ანგარიშზე</span>', 2800],
         ['🔥 მზა ნაკრებები<span class="sub">ლუდი და მისაყოლებელი უკვე აწყობილია — აირჩიე და მზადაა</span>', 2500],
         ['🎁 გაუმასპინძლდი მეგობარს<span class="sub">შენ იხდი — ჩვენ მას მივუტანთ</span>', 2400],
         ['🏆 დავდოთ ფსონი ლუდზე?<span class="sub">წააგე — შენ უმასპინძლდები</span>', 2400],
@@ -33,10 +36,12 @@
         ['🎮 თამაში «გაქანება»<span class="sub">კურიერი გამოვიდა — ითამაშე, სანამ მოგიტანთ. ყოველ შეკვეთაზე 3 ცდა, თვის საუკეთესო იგებს 4 პორცია მწვადს</span>', 3600],
         ['🌙 00:00-დან 08:00-მდე — ფასები +10 %<span class="sub">მიტანა დღისით 3 ₾, უფასოდ 50 ₾-დან · 23:00-ის შემდეგ — 7 ₾, უფასოდ 80 ₾-დან</span>', 3400]],
       cta: 'შეკვეთაზე გადასვლა →', hint: 'შეკვეთაზე პირდაპირ გადასასვლელად დააჭირეთ ღილაკს', help: 'დახმარება გჭირდებათ შეკვეთაში?',
-      night: '🌙 00:00–08:00 ფასები +10 % · მიტანა 23:00-ის შემდეგ — 7 ₾'
+      night: '🌙 00:00–08:00 ფასები +10 % · მიტანა 23:00-ის შემდეგ — 7 ₾',
+      ref: '🤝 გაუგზავნე მეგობარს ბმული — მიიღე მისი შეკვეთის 50%'
     },
     hy: {
       frames: [['<span>Գարեջուր</span><span>լավ երեկոյի համար</span>', 1700, 'brand'],
+        ['🤝 Ուղարկիր ընկերոջդ հղումը<span class="sub">և ստացիր նրա պատվերի 50%-ը՝ միավորներով քո հաշվին</span>', 2800],
         ['🔥 Պատրաստի հավաքածուներ<span class="sub">Գարեջուրն ու խորտիկն արդեն հավաքված են՝ ընտրիր և վերջ</span>', 2500],
         ['🎁 Հյուրասիրիր ընկերոջդ<span class="sub">Դու վճարում ես՝ մենք տանում ենք նրան</span>', 2400],
         ['🏆 Գրազ գարեջրի վրա՞<span class="sub">Պարտվողը հյուրասիրում է</span>', 2400],
@@ -45,7 +50,8 @@
         ['🎮 «Թռիչք» խաղը<span class="sub">Առաքիչը դուրս եկավ՝ խաղա, մինչ բերում ենք։ Յուրաքանչյուր պատվերից 3 փորձ, ամսվա լավագույնը շահում է 4 բաժին խորոված</span>', 3600],
         ['🌙 00:00-ից 08:00 — գները +10 %<span class="sub">Առաքումը ցերեկը 3 ₾, անվճար 50 ₾-ից · 23:00-ից հետո՝ 7 ₾, անվճար 80 ₾-ից</span>', 3400]],
       cta: 'ԱՆՑՆԵԼ ՊԱՏՎԵՐԻՆ →', hint: 'Պատվերին անմիջապես անցնելու համար սեղմեք կոճակը', help: 'Օգնությո՞ւն է պետք պատվերի հարցում։',
-      night: '🌙 00:00–08:00 գները +10 % · առաքումը 23:00-ից հետո՝ 7 ₾'
+      night: '🌙 00:00–08:00 գները +10 % · առաքումը 23:00-ից հետո՝ 7 ₾',
+      ref: '🤝 Ուղարկիր ընկերոջդ հղումը — ստացիր նրա պատվերի 50%-ը'
     }
   };
   const t = () => copy[root.lang] || copy.ru;
@@ -124,6 +130,8 @@
     hint.textContent = c.hint;
     const nl = document.getElementById('introNight');
     if (nl) nl.textContent = c.night;
+    const rb = document.getElementById('introRef');
+    if (rb) rb.textContent = c.ref;
     document.getElementById('checkoutHelp').textContent = c.help;
     intro.querySelectorAll('.intro-langs button').forEach(b => b.classList.toggle('on', b.dataset.l === (root.lang || 'ru')));
     if (running && shownLang !== root.lang) {
@@ -193,5 +201,10 @@
   if (short) { showFrame(0); holdTimer = setTimeout(reveal, 1800) } else playFrom(0);
   intro.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
   order.addEventListener('click', () => { scrollAfter = true; reveal(); });
+  // «Перешли другу ссылку»: open the store and right away the sheet with the personal link
+  document.getElementById('introRef')?.addEventListener('click', () => {
+    reveal();
+    setTimeout(() => { if (typeof window.openRef === 'function') window.openRef() }, REVEAL_MS + 60);
+  });
   document.addEventListener('keydown', e => { if (phase === 'hold' && e.key === 'Escape') reveal(); });
 })();
