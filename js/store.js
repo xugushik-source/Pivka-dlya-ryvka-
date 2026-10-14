@@ -316,6 +316,54 @@ function phoneOk(v) {
 // Order status for the customer. The browser keeps the id of the order it just placed (a random uuid) and asks the
 // database for its status — no phone, no login. Steps: Получен → Принят → Собран → (30 s) Едет → Доставлен / Отменён.
 const TRACK_KEY = 'pivka_last_order';
+// Referral: ?ref=CODE (a friend's personal link) is kept until this phone's first order; the server credits the
+// friend only if this is really a new customer. Points: up to 10 % of the products (not Рывки), no gift then.
+const REF_RE = /^[A-Z0-9]{4,10}$/;
+let REF = '';
+try {
+  const q = (new URLSearchParams(location.search).get('ref') || '').toUpperCase();
+  if (REF_RE.test(q)) localStorage.setItem('pivka_ref', q);
+  REF = localStorage.getItem('pivka_ref') || ''
+} catch (e) {}
+let BONUS = { balance: 0, pct: 10, use: true };
+const bonusX = () => BONUS.use && BONUS.balance > 0 ? Math.min(BONUS.balance, Math.floor(totals() * BONUS.pct / 100 * 2) / 2) : 0;
+async function loadBonus() {
+  const ph = coPhone.value.trim();
+  BONUS.balance = 0;
+  if (ph.replace(/\D/g, '').length >= 9) try {
+    const r = await PIVKA_DB.client().rpc('bonus_info', { p_phone: ph });
+    if (!r.error && r.data) BONUS = { ...BONUS, balance: Number(r.data.balance) || 0, pct: Number(r.data.spend_percent) || 10 }
+  } catch (e) {}
+  renderBonus();
+  refreshDeliveryQuote()
+}
+function renderBonus() {
+  const el = document.getElementById('coBonus');
+  if (!el) return;
+  const x = Math.min(BONUS.balance, Math.floor(totals() * BONUS.pct / 100 * 2) / 2);
+  el.hidden = !(BONUS.balance > 0);
+  if (el.hidden) return;
+  el.innerHTML = '<input type="checkbox" id="coBonusUse"' + (BONUS.use ? ' checked' : '') + '> <span>💎 ' + esc(tr('Списать баллы')) + ': <b>−' + money(x) + '</b> · ' +
+    esc(tr('у тебя')) + ' ' + money(BONUS.balance) + '<br><small>' + esc(tr('До {p}% от товаров (не рывки). С баллами подарок не даётся.').replace('{p}', BONUS.pct)) + '</small></span>';
+  el.querySelector('input').onchange = e => { BONUS.use = e.target.checked; renderBonus(); refreshDeliveryQuote() }
+}
+// «Пригласи друга»: the personal link of the phone that made this order.
+async function referralCard(orderId) {
+  try {
+    const r = await PIVKA_DB.client().rpc('referral_info', { p_order: orderId });
+    if (r.error || !r.data?.code) return '';
+    const d = r.data, link = location.origin + location.pathname.replace(/[^/]*$/, '') + '?ref=' + d.code;
+    return '<div class="refCard"><b>🤝 ' + esc(tr('Пригласи друга — получи {p}% от его первого заказа баллами').replace('{p}', d.reward_percent)) + '</b>' +
+      '<span>' + esc(tr('Баллами можно оплатить до {p}% каждого заказа.').replace('{p}', d.spend_percent)) + (Number(d.balance) > 0 ? ' ' + esc(tr('У тебя')) + ': <b>' + money(d.balance) + '</b>' : '') + '</span>' +
+      '<input readonly value="' + esc(link) + '" onclick="this.select()">' +
+      '<button type="button" class="yellow checkout" onclick="shareRef(\'' + esc(link) + '\')">' + esc(tr('Отправить ссылку другу')) + '</button></div>'
+  } catch (e) { return '' }
+}
+async function shareRef(link) {
+  const text = tr('Пивка для рывка — пиво, шашлык и закуска с доставкой. Заказывай по моей ссылке:') + ' ' + link;
+  try { if (navigator.share) return await navigator.share({ text, url: link }) } catch (e) { return }
+  try { await navigator.clipboard.writeText(link); alert(tr('Ссылка скопирована')) } catch (e) { prompt('', link) }
+}
 const TRACK_KEEP_MS = 60e3; // a cancelled order's card disappears after a minute (owner, 2026-10-12)
 const TRACK_DELIVERED_KEEP_MS = 24 * 3600e3; // after delivery only the game stays — up to a day, while attempts remain
 // Someone who ordered in the last 12 hours comes back to see the status: skip the long intro credits.
@@ -1217,8 +1265,8 @@ async function refreshDeliveryQuote() {
   const seq = ++quoteSeq;
   try {
     const zone = fulfillment === 'delivery' ? coZone.value || null : null, phone = coPhone.value.trim() || null;
-    const q = PRE ? await retry(async () => { const x = await PIVKA_DB.client().rpc('delivery_quote_at', { p_zone: zone, p_phone: phone, p_fulfillment: fulfillment, p_subtotal: orderBase(), p_at: PRE.toISOString() }); if (x.error) throw x.error; return x.data })
-      : await retry(() => PIVKA_DB.deliveryQuote(zone, phone, fulfillment));
+    const q = PRE ? await retry(async () => { const x = await PIVKA_DB.client().rpc('delivery_quote_at', { p_zone: zone, p_phone: phone, p_fulfillment: fulfillment, p_subtotal: orderBase() - bonusX(), p_at: PRE.toISOString() }); if (x.error) throw x.error; return x.data })
+      : await retry(() => PIVKA_DB.deliveryQuote(zone, phone, fulfillment, orderBase() - bonusX()));
     if (seq !== quoteSeq || !checkoutFormAlive()) return;
     deliveryQuoteState = { fee: coZone.value || fulfillment !== 'delivery' || q.mode !== 'CHARGE' ? Number(q.fee) : null, reason: q.reason, mode: q.mode || 'CHARGE' }
   } catch (e) {
@@ -1247,9 +1295,10 @@ function currentDeliveryFee() {
 
 function updateCheckoutTotal() {
   if (!checkoutFormAlive()) return;
-  const base = orderBase();
+  const base = orderBase() - bonusX();
   const opt = coZone.options[coZone.selectedIndex];
   const fee = currentDeliveryFee();
+  renderBonus();
   const mode = deliveryQuoteState.mode;
   coTotal.textContent = money(base + fee) + (coPayment.value === 'ru_card' && ruCard ? ' ≈ ' + ruAmount(base + fee).toLocaleString('ru-RU') + ' ₽' : '');
   renderRuCard();
@@ -1269,6 +1318,7 @@ function openCheckout(bundle = null) {
   } catch (e) {}
   if (bundle) checkoutBundle = bundle;
   coWhen.innerHTML = preOptions();
+  loadBonus();
   const items = Object.values(cart);
   if (!checkoutBundle && !items.length) {
     cartHint.textContent = 'Добавь товар из каталога для оформления';
@@ -1340,22 +1390,21 @@ async function submitCheckout() {
       address,
       payment: coPayment.value,
       comment: (pickupText ? pickupText + (coComment.value.trim() ? ' | ' : '') : '') + coComment.value.trim() + (currentCity ? ' | Город: ' + currentCity.name : '') + (coZone.value && fulfillment === 'delivery' ? ' | Зона: ' + coZone.options[coZone.selectedIndex].text : '') +
-        (coPayment.value === 'ru_card' && ruCard ? ' | 🇷🇺 Оплата с российской карты: ' + ruAmount(orderBase() + currentDeliveryFee()) + ' ₽ (курс ЦБ ' + ruRate.toFixed(2) + ' + ' + Number(ruCard.markup || 15) + '%)' : ''),
+        (coPayment.value === 'ru_card' && ruCard ? ' | 🇷🇺 Оплата с российской карты: ' + ruAmount(orderBase() - bonusX() + currentDeliveryFee()) + ' ₽ (курс ЦБ ' + ruRate.toFixed(2) + ' + ' + Number(ruCard.markup || 15) + '%)' : ''),
       items,
       bundleId: checkoutBundle?.id,
       cityId: currentCity?.id || null,
       zoneId: fulfillment === 'delivery' ? coZone.value || null : null
     };
-    let r;
-    if (PRE) {
-      const a = { p_name: payload.name, p_phone: payload.phone, p_fulfillment: fulfillment, p_address: address || '', p_payment: payload.payment || 'cash',
-        p_comment: payload.comment, p_items: items, p_zone: payload.zoneId, p_at: PRE.toISOString() };
-      const x = checkoutBundle ? await PIVKA_DB.client().rpc('create_bundle_preorder', { ...a, p_bundle: checkoutBundle.id, p_city: payload.cityId })
-        : await PIVKA_DB.client().rpc('create_store_preorder', a);
-      if (x.error) throw x.error;
-      r = x.data
-    } else if (checkoutBundle) r = await PIVKA_DB.createBundleOrder(payload);
-    else r = await PIVKA_DB.createOrder(payload);
+    // One server call: regular order or Рывок, pre-order time, friend's referral code, points.
+    const x = await PIVKA_DB.client().rpc('checkout_order', { p: {
+      name: payload.name, phone: payload.phone, fulfillment, address: address || '', payment: payload.payment || 'cash', comment: payload.comment,
+      items, zone: payload.zoneId, bundle: checkoutBundle?.id || null, city: payload.cityId, at: PRE ? PRE.toISOString() : null,
+      ref: REF || null, use_bonus: bonusX() > 0 } });
+    if (x.error) throw x.error;
+    const r = x.data;
+    try { localStorage.removeItem('pivka_ref') } catch (e) {}
+    REF = '';
     if (window.pivkaSound) pivkaSound('order');
     track('order_complete', { bundleId: checkoutBundle?.id || null, metadata: { order_number: r.order_number, total: Number(r.total), campaign: campaignInfo(), src: visitSource() } });
     try {
@@ -1363,9 +1412,10 @@ async function submitCheckout() {
     } catch (e) {}
     // The order has its own page (status, «Рывок» game, chat with us) — no WhatsApp, no phone number.
     const orderUrl = r.order_id ? new URL('order.html?o=' + r.order_id, location.href.split(/[?#]/)[0].replace(/[^/]*$/, '')).href : '';
-    checkoutBody.innerHTML = `<div class="success"><div class="big">🍻</div><h2>Рывок принят!</h2><p class="muted">Заказ №${r.order_number}<br>${r.scheduled_for ? '🕐 ' + esc(tr('Предзаказ — привезём к')) + ' ' + esc(preLabel(new Date(r.scheduled_for))) + '<br>' : ''}Сумма: ${money(r.total)}</p>${orderUrl ? `<a class="yellow checkout" style="display:block;text-decoration:none" href="${orderUrl}">Мой заказ и статус →</a>${['transfer', 'ru_card'].includes(coPayment.value) ? '<button type="button" class="yellow checkout" data-chat style="display:block;width:100%;border:0;cursor:pointer">📷 Отправить скриншот перевода</button>' : ''}<button type="button" class="skip" data-chat>💬 Вопрос по заказу? Напишите нам в чат</button>` : ''}<button class="skip" onclick="try{sessionStorage.setItem('pivka_intro_short','1')}catch(e){};location.reload()">Готово</button></div>`;
+    checkoutBody.innerHTML = `<div class="success"><div class="big">🍻</div><h2>Рывок принят!</h2><p class="muted">Заказ №${r.order_number}<br>${Number(r.bonus_used) > 0 ? '💎 ' + esc(tr('Баллами')) + ': −' + money(r.bonus_used) + '<br>' : ''}${r.scheduled_for ? '🕐 ' + esc(tr('Предзаказ — привезём к')) + ' ' + esc(preLabel(new Date(r.scheduled_for))) + '<br>' : ''}Сумма: ${money(r.total)}</p>${orderUrl ? `<a class="yellow checkout" style="display:block;text-decoration:none" href="${orderUrl}">Мой заказ и статус →</a>${['transfer', 'ru_card'].includes(coPayment.value) ? '<button type="button" class="yellow checkout" data-chat style="display:block;width:100%;border:0;cursor:pointer">📷 Отправить скриншот перевода</button>' : ''}<button type="button" class="skip" data-chat>💬 Вопрос по заказу? Напишите нам в чат</button>` : ''}<button class="skip" onclick="try{sessionStorage.setItem('pivka_intro_short','1')}catch(e){};location.reload()">Готово</button></div>`;
     // The same status card as on the home page.
     checkoutBody.querySelector('.success').insertAdjacentHTML('beforeend', '<div id="orderTrack" class="trackCard" hidden></div>');
+    if (r.order_id) referralCard(r.order_id).then(h => { const s = checkoutBody.querySelector('.success'); if (h && s) s.insertAdjacentHTML('beforeend', h) });
     document.querySelector('#todaySection #orderTrack')?.remove();
     refreshTrack();
     Object.keys(cart).forEach(k => delete cart[k]);
@@ -1468,7 +1518,7 @@ function observeBundles() {
   io.observe(bundles)
 }
 coZone.addEventListener('change', () => { updateCheckoutTotal(); refreshDeliveryQuote() });
-coPhone.addEventListener('change', refreshDeliveryQuote);
+coPhone.addEventListener('change', loadBonus);
 document.addEventListener('pivka:intro-done', () => track('splash_complete'), { once: true });
 observeNav();
 (async () => {
