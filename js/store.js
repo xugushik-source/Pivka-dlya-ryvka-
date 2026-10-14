@@ -429,9 +429,12 @@ function openSocial(type) {
   socialTitle.textContent = type === 'TREAT' ? '🍻 Угостить друга' : '🏆 Спорим на пиво?';
   socialSub.textContent = type === 'TREAT' ? 'Выбери угощение и отправь ссылку другу' : 'Выбери ставку и отправь ссылку сопернику';
   socialBody.innerHTML = '<input id="socialName" placeholder="Твоё имя"><input id="socialPhone" inputmode="tel" autocomplete="tel" placeholder="Твой телефон *"><select id="socialStake"></select><textarea id="socialMessage" placeholder="Сообщение другу"></textarea><div class="error" id="socialError"></div><button class="yellow checkout" onclick="createSocial()">Создать ссылку →</button>';
-  const opts = bundleCatalog.filter(b => b.available !== false).map(b => '<option value="b:' + b.id + '">' + esc(tr(b.name)) + ' — ' + money(b.price) + '</option>');
-  catalog.filter(p => p.unit === 'liter').forEach(p => opts.push('<option value="p:' + p.id + '">' + esc(pname(p)) + ' — ' + money(Number(p.sale_price) * Number(p.minimum_quantity || 2)) + '</option>'));
-  socialStake.innerHTML = opts.length ? opts.join('') : '<option value="">Нет доступных ставок</option>';
+  // Outside the selling hours (morning: beer and «рывки» from 10–12) the choice used to be empty. The friend accepts
+  // the link later, so offer everything and say when it opens; the order itself is created only on acceptance.
+  const later = b => b.unavailable_reason === 'CLOSED_NOW';
+  const opts = bundleCatalog.filter(b => b.available !== false || later(b)).map(b => '<option value="b:' + b.id + '">' + esc(tr(b.name)) + ' — ' + money(b.price) + (later(b) ? ' · ' + tr('днём') : '') + '</option>');
+  (catalogAll.length ? catalogAll : catalog).filter(p => p.unit === 'liter').forEach(p => opts.push('<option value="p:' + p.id + '">' + esc(pname(p)) + ' — ' + money(Number(p.sale_price) * Number(p.minimum_quantity || 2)) + (openNow(p) ? '' : ' · ' + tr('с 12:00')) + '</option>'));
+  socialStake.innerHTML = opts.length ? opts.join('') : '<option value="">' + esc(tr(type === 'TREAT' ? 'Угощения появятся после открытия' : 'Ставки появятся после открытия')) + '</option>';
   const prof = JSON.parse(localStorage.getItem('pivka_profile') || '{}');
   socialName.value = prof.name || '';
   socialPhone.value = prof.phone || '';
@@ -443,6 +446,10 @@ async function createSocial() {
     socialError.textContent = 'Укажи телефон';
     return
   }
+  if (!socialStake.value) {
+    socialError.textContent = tr(socialType === 'TREAT' ? 'Выбери угощение' : 'Выбери ставку');
+    return
+  }
   const [kind, id] = socialStake.value.split(':');
   try {
     const r = await PIVKA_DB.createSocialOrder({
@@ -451,7 +458,7 @@ async function createSocial() {
       phone: socialPhone.value.trim(),
       bundleId: kind === 'b' ? id : null,
       productId: kind === 'p' ? id : null,
-      quantity: kind === 'p' ? (catalog.find(x => x.id === id)?.minimum_quantity || 2) : 1,
+      quantity: kind === 'p' ? ((catalogAll.length ? catalogAll : catalog).find(x => x.id === id)?.minimum_quantity || 2) : 1,
       message: socialMessage.value.trim()
     });
     const link = location.origin + location.pathname + '?social=' + r.token;
