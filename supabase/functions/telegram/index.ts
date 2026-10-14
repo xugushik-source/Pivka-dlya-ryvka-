@@ -293,6 +293,9 @@ function supplierText(o: any, supplierId: string) {
   const g = ((o.supplier_order_groups || []) as any[]).find((x) => x.supplier_id === supplierId) || {};
   return [
     o.scheduled_for ? `🕐 <b>ПРЕДЗАКАЗ</b> — клиенту к ${time(o.scheduled_for)}, сейчас не собирать` : null,
+    o.scheduled_for ? (o.status === "NEW"
+      ? "⏳ Курьер ещё не подтвердил заказ с клиентом. Сейчас ответьте, всё ли есть (кнопка «⚠️ Чего-то нет»), но <b>не закупайте</b> — дождитесь подтверждения."
+      : "✅ Клиент подтвердил — можно закупать и готовить к сроку.") : null,
     hot && slowest && !o.scheduled_for
       ? `🔥 <b>Заказ №${o.order_number}</b> · готовить сразу, курьер заберёт горячим к ${hm(due)}`
       : `📦 <b>Заказ №${o.order_number}</b> · подготовить к ${o.scheduled_for ? time(due) : hm(due)}${hot || o.scheduled_for ? "" : ` (${prepMinutes(o)} мин)`}`,
@@ -369,11 +372,29 @@ async function sendSuppliers(cfg: Cfg, o: any) {
   return sent;
 }
 
+// A pre-order the supplier already has: tell them the customer confirmed it — now they may buy and cook.
+// At night nothing is sent: the 08:00 message is built from the current status and already says «подтвердил».
+async function preorderConfirmed(cfg: Cfg, o: any) {
+  let sent = 0;
+  for (const g of (o.supplier_order_groups || []) as any[]) {
+    const chat = await chatOf("SUPPLIER", g.supplier_id);
+    if (!chat) continue;
+    const { data: had } = await db.from("telegram_messages").select("id").eq("order_id", o.id).eq("kind", "SUPPLIER").eq("chat_id", chat).limit(1);
+    if (!had?.length) { sent += await sendSuppliers(cfg, { ...o, supplier_order_groups: [g] }); continue; }
+    try {
+      await tg(cfg, "sendMessage", { chat_id: chat, parse_mode: "HTML",
+        text: `✅ <b>Предзаказ №${o.order_number} подтверждён клиентом</b> — можно закупать. Готовить к ${hm(pickupAt(o))} (клиенту к ${time(o.scheduled_for)}).` });
+      sent++;
+    } catch (e) { console.error(e); }
+  }
+  return sent;
+}
+
 // Pre-orders go to suppliers right away (in their hours), so they can say early what is missing or must be bought;
 // for a regular order suppliers get it once the courier has confirmed it with the customer.
 async function onOrderConfirmed(cfg: Cfg, orderId: string) {
   const o = await loadOrder(orderId);
-  const sent = o.scheduled_for ? 0 : await sendSuppliers(cfg, o);
+  const sent = o.scheduled_for ? (supplierHours() ? await preorderConfirmed(cfg, o) : 0) : await sendSuppliers(cfg, o);
   await refreshOwner(cfg, o);
   await refreshCourier(cfg, o);
   return sent;
