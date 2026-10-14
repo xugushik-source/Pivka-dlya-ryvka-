@@ -326,7 +326,11 @@ try {
   REF = localStorage.getItem('pivka_ref') || ''
 } catch (e) {}
 let BONUS = { balance: 0, pct: 10, use: true };
-const bonusX = () => BONUS.use && BONUS.balance > 0 ? Math.min(BONUS.balance, Math.floor(totals() * BONUS.pct / 100 * 2) / 2) : 0;
+// A points order has no discounts and no gift: a Рывок then goes at the full price of its products.
+const fullBase = () => totals() + (checkoutBundle ? Number(checkoutBundle.regular_total || checkoutBundle.price || 0) : 0);
+const bonusX = () => BONUS.use && BONUS.balance > 0 ? Math.min(BONUS.balance, Math.floor(fullBase() * BONUS.pct / 100 * 2) / 2) : 0;
+// goods to pay: with points — full prices minus points, otherwise the usual (Рывок discount)
+const payGoods = () => bonusX() > 0 ? fullBase() - bonusX() : orderBase();
 async function loadBonus() {
   const ph = coPhone.value.trim();
   BONUS.balance = 0;
@@ -340,11 +344,11 @@ async function loadBonus() {
 function renderBonus() {
   const el = document.getElementById('coBonus');
   if (!el) return;
-  const x = Math.min(BONUS.balance, Math.floor(totals() * BONUS.pct / 100 * 2) / 2);
+  const x = Math.min(BONUS.balance, Math.floor(fullBase() * BONUS.pct / 100 * 2) / 2);
   el.hidden = !(BONUS.balance > 0);
   if (el.hidden) return;
   el.innerHTML = '<input type="checkbox" id="coBonusUse"' + (BONUS.use ? ' checked' : '') + '> <span>💎 ' + esc(tr('Списать баллы')) + ': <b>−' + money(x) + '</b> · ' +
-    esc(tr('у тебя')) + ' ' + money(BONUS.balance) + '<br><small>' + esc(tr('До {p}% от товаров (не рывки). С баллами подарок не даётся.').replace('{p}', BONUS.pct)) + '</small></span>';
+    esc(tr('у тебя')) + ' ' + money(BONUS.balance) + '<br><small>' + esc(tr(checkoutBundle ? 'До {p}% от заказа. С баллами рывок — по полной цене, без скидки и подарка.' : 'До {p}% от заказа. Заказ с баллами — без скидок и подарков.').replace('{p}', BONUS.pct)) + '</small></span>';
   el.querySelector('input').onchange = e => { BONUS.use = e.target.checked; renderBonus(); refreshDeliveryQuote() }
 }
 // «Пригласи друга»: the personal link of the phone that made this order.
@@ -1265,8 +1269,8 @@ async function refreshDeliveryQuote() {
   const seq = ++quoteSeq;
   try {
     const zone = fulfillment === 'delivery' ? coZone.value || null : null, phone = coPhone.value.trim() || null;
-    const q = PRE ? await retry(async () => { const x = await PIVKA_DB.client().rpc('delivery_quote_at', { p_zone: zone, p_phone: phone, p_fulfillment: fulfillment, p_subtotal: orderBase() - bonusX(), p_at: PRE.toISOString() }); if (x.error) throw x.error; return x.data })
-      : await retry(() => PIVKA_DB.deliveryQuote(zone, phone, fulfillment, orderBase() - bonusX()));
+    const q = PRE ? await retry(async () => { const x = await PIVKA_DB.client().rpc('delivery_quote_at', { p_zone: zone, p_phone: phone, p_fulfillment: fulfillment, p_subtotal: payGoods(), p_at: PRE.toISOString() }); if (x.error) throw x.error; return x.data })
+      : await retry(() => PIVKA_DB.deliveryQuote(zone, phone, fulfillment, payGoods()));
     if (seq !== quoteSeq || !checkoutFormAlive()) return;
     deliveryQuoteState = { fee: coZone.value || fulfillment !== 'delivery' || q.mode !== 'CHARGE' ? Number(q.fee) : null, reason: q.reason, mode: q.mode || 'CHARGE' }
   } catch (e) {
@@ -1295,7 +1299,7 @@ function currentDeliveryFee() {
 
 function updateCheckoutTotal() {
   if (!checkoutFormAlive()) return;
-  const base = orderBase() - bonusX();
+  const base = payGoods();
   const opt = coZone.options[coZone.selectedIndex];
   const fee = currentDeliveryFee();
   renderBonus();
@@ -1390,7 +1394,7 @@ async function submitCheckout() {
       address,
       payment: coPayment.value,
       comment: (pickupText ? pickupText + (coComment.value.trim() ? ' | ' : '') : '') + coComment.value.trim() + (currentCity ? ' | Город: ' + currentCity.name : '') + (coZone.value && fulfillment === 'delivery' ? ' | Зона: ' + coZone.options[coZone.selectedIndex].text : '') +
-        (coPayment.value === 'ru_card' && ruCard ? ' | 🇷🇺 Оплата с российской карты: ' + ruAmount(orderBase() - bonusX() + currentDeliveryFee()) + ' ₽ (курс ЦБ ' + ruRate.toFixed(2) + ' + ' + Number(ruCard.markup || 15) + '%)' : ''),
+        (coPayment.value === 'ru_card' && ruCard ? ' | 🇷🇺 Оплата с российской карты: ' + ruAmount(payGoods() + currentDeliveryFee()) + ' ₽ (курс ЦБ ' + ruRate.toFixed(2) + ' + ' + Number(ruCard.markup || 15) + '%)' : ''),
       items,
       bundleId: checkoutBundle?.id,
       cityId: currentCity?.id || null,
