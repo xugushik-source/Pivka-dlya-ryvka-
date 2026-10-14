@@ -212,7 +212,7 @@ async function cityDrivers(cityId: string) {
 
 async function onOrderCreated(cfg: Cfg, orderId: string) {
   const o = await loadOrder(orderId);
-  let sent = 0;
+  let sent = o.scheduled_for && !o.from_stock && supplierHours() ? await sendSuppliers(cfg, o) : 0;
   for (const l of await linksOf("OWNER")) {
     try {
       const m = await tg(cfg, "sendMessage", { chat_id: l.chat_id, text: ownerText(o), parse_mode: "HTML", disable_web_page_preview: true, reply_markup: ownerKeyboard(o) });
@@ -348,12 +348,16 @@ async function moveCourierCard(cfg: Cfg, o: any, note: string) {
   } catch (e) { console.error("move card", e); await refreshCourier(cfg, o); }
 }
 
-async function onOrderConfirmed(cfg: Cfg, orderId: string) {
-  const o = await loadOrder(orderId);
+// Suppliers work 08:00–23:00 Tbilisi: a pre-order made at night reaches them at 08:00 (cron «preorder-morning»).
+const supplierHours = () => { const h = Number(new Date().toLocaleString("en-GB", { timeZone: "Asia/Tbilisi", hour: "2-digit", hourCycle: "h23" })); return h >= 8 && h < 23; };
+
+async function sendSuppliers(cfg: Cfg, o: any) {
   let sent = 0;
   for (const g of (o.supplier_order_groups || []) as any[]) {
     const chat = await chatOf("SUPPLIER", g.supplier_id);
     if (chat) {
+      const { data: had } = await db.from("telegram_messages").select("id").eq("order_id", o.id).eq("kind", "SUPPLIER").eq("chat_id", chat).limit(1);
+      if (had?.length) continue;
       try {
         const m = await tg(cfg, "sendMessage", { chat_id: chat, text: supplierText(o, g.supplier_id), parse_mode: "HTML", reply_markup: supplierKeyboard(o, g.supplier_id) });
         await remember(o.id, chat, m.message_id, "SUPPLIER"); sent++;
@@ -362,6 +366,14 @@ async function onOrderConfirmed(cfg: Cfg, orderId: string) {
       await sendToKind(cfg, "OWNER", `⚠️ <b>${esc(g.suppliers?.name || "Поставщик")}</b> не подключён к боту — перешлите ему заказ сами:\n\n` + supplierText(o, g.supplier_id));
     }
   }
+  return sent;
+}
+
+// Pre-orders go to suppliers right away (in their hours), so they can say early what is missing or must be bought;
+// for a regular order suppliers get it once the courier has confirmed it with the customer.
+async function onOrderConfirmed(cfg: Cfg, orderId: string) {
+  const o = await loadOrder(orderId);
+  const sent = o.scheduled_for ? 0 : await sendSuppliers(cfg, o);
   await refreshOwner(cfg, o);
   await refreshCourier(cfg, o);
   return sent;
@@ -422,7 +434,8 @@ async function onOrderEdited(cfg: Cfg, b: any) {
     const chat = await chatOf("DRIVER", o.driverId);
     if (chat) await quiet(tg(cfg, "sendMessage", { chat_id: chat, text: `✏️ ${esc(who)} изменил заказ №${o.order_number} — проверьте состав.\n${sumLine}${wo}`, parse_mode: "HTML" }));
   }
-  if (o.status === "NEW" || o.from_stock) return 0; // suppliers haven't got this order yet / night order from the stock
+  // suppliers haven't got this order yet / night order from the stock / night pre-order (goes out at 08:00 in its final form)
+  if ((o.status === "NEW" && !o.scheduled_for) || o.from_stock || (o.scheduled_for && !supplierHours())) return 0;
   let sent = 0;
   const removed: string[] = b.removed || [];
   for (const sid of [...new Set<string>([...(b.changed || []), ...removed])]) {
@@ -923,6 +936,15 @@ async function onOwnerMenuCallback(cfg: Cfg, q: any, act: string, arg: string) {
 }
 
 // 10:00 Tbilisi: how the night went.
+// 08:00: pre-orders made during the night go to the suppliers.
+async function onPreorderMorning(cfg: Cfg) {
+  const { data } = await db.from("orders").select("id").not("scheduled_for", "is", null).eq("from_stock", false)
+    .in("status", ["NEW", "CONFIRMED", "PREPARING"]).gte("created_at", new Date(Date.now() - 10 * 3600e3).toISOString());
+  let sent = 0;
+  for (const x of data || []) sent += await sendSuppliers(cfg, await loadOrder(x.id));
+  return sent;
+}
+
 async function onStockMorning(cfg: Cfg) {
   const r = await owner(null as any, "morning");
   const sold = (r.sold || []) as any[], stock = (r.stock || []) as any[], paid = r.paid || {};
@@ -1155,6 +1177,7 @@ Deno.serve(async (req) => {
       if (b.action === "supplier_paid") return out({ sent: await onSupplierPaid(cfg, b.supplier_id, Number(b.amount)) });
       if (b.action === "support_in") return out({ sent: await onSupportIn(cfg, Number(b.message_id)) });
       if (b.action === "stock_morning") return out({ sent: await onStockMorning(cfg) });
+      if (b.action === "preorder_morning") return out({ sent: await onPreorderMorning(cfg) });
       if (b.action === "support_blocked") return out({ sent: await onSupportBlocked(cfg, b.thread_id, b.until) });
       return out({ error: "Unknown action" }, 400);
     }
