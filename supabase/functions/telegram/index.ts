@@ -802,7 +802,7 @@ async function onSupportOwnerMessage(cfg: Cfg, m: any) {
 // Steps that need a number keep their state in tg_owner_state (30 min). Every action is checked in tg_owner by the owner's chat.
 
 const OWNER_MENU = {
-  keyboard: [[{ text: "📥 Приход" }, { text: "💸 Оплата" }], [{ text: "📦 Склад" }, { text: "📊 Долги" }]],
+  keyboard: [[{ text: "📥 Приход" }, { text: "💸 Оплата" }], [{ text: "📦 Склад" }, { text: "📊 Долги" }], [{ text: "🤝 Рефералы" }]],
   resize_keyboard: true, is_persistent: true,
 };
 const wcb = (act: string, arg = "") => `w|${act}${arg ? "|" + arg : ""}`;
@@ -850,6 +850,21 @@ function debtsText(list: any[]) {
   return "📊 <b>Поставщики</b>\n\n" + rows.join("\n\n") + `\n\n<b>Всего долг: ${money(total)}</b>`;
 }
 
+// «🤝 Рефералы»: points on the customers' hands (our future discount) and the best inviters — for a surprise gift.
+function referralsText(r: any) {
+  const top = (r.top || []) as any[];
+  return [
+    "🤝 <b>Рефералы</b>",
+    "",
+    `💎 Баллов на руках: <b>${money(r.points)}</b> у ${Number(r.holders)} чел. — это будущие скидки (до 10% заказа)`,
+    `🔗 Ссылок выдано: ${Number(r.links)} · пришло друзей: ${Number(r.friends)}`,
+    `➕ Начислено за друзей: ${money(r.rewarded)} · ➖ потрачено баллами: ${money(r.spent)}`,
+    "",
+    top.length ? "<b>Кто сколько привёл</b> (пришли / уже купили · заработал · на счету):" : "Пока никто никого не привёл.",
+    ...top.map((x, i) => `${i < 3 ? ["🥇", "🥈", "🥉"][i] : `${i + 1}.`} ${esc(x.name || "Без имени")} · ${esc(x.phone || "")} — ${Number(x.friends)} / ${Number(x.bought)} · ${money(x.earned)} · ${money(x.balance)}`),
+  ].join("\n");
+}
+
 // Owner's private chat: menu buttons and the numbers they ask for. Returns true when handled.
 async function onOwnerText(cfg: Cfg, m: any) {
   if (m.chat.type !== "private" || !m.text || m.reply_to_message || !(await isOwnerChat(m.chat.id))) return false;
@@ -875,6 +890,7 @@ async function onOwnerText(cfg: Cfg, m: any) {
   }
   if (/склад/.test(low)) { await say(cfg, chat, stockText(await owner(chat, "stock"))); return true; }
   if (/долг/.test(low)) { await say(cfg, chat, debtsText(await owner(chat, "suppliers"))); return true; }
+  if (/рефер|бонус|балл/.test(low)) { await say(cfg, chat, referralsText(await owner(chat, "referrals"))); return true; }
   if (/^\/?(меню|menu)$/.test(low)) { await say(cfg, chat, "Меню внизу 👇"); return true; }
 
   const st = await getState(chat);
