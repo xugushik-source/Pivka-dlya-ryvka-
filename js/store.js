@@ -327,6 +327,13 @@ try {
   REF = localStorage.getItem('pivka_ref') || ''
 } catch (e) {}
 let BONUS = { balance: 0, pct: 10, use: true };
+// Demo mode for recording promo videos (?demo=ryvok, kept for the tab): 50 points on any phone, and «Подтвердить
+// заказ» shows the success screen without creating anything — no order, no bots, no suppliers, no courier.
+let DEMO = false;
+try {
+  if (new URLSearchParams(location.search).get('demo') === 'ryvok') sessionStorage.setItem('pivka_demo', '1');
+  DEMO = sessionStorage.getItem('pivka_demo') === '1'
+} catch (e) {}
 // A points order has no discounts and no gift: a Рывок then goes at the full price of its products.
 const fullBase = () => totals() + (checkoutBundle ? Number(checkoutBundle.regular_total || checkoutBundle.price || 0) : 0);
 const bonusX = () => BONUS.use && BONUS.balance > 0 ? Math.min(BONUS.balance, Math.floor(fullBase() * BONUS.pct / 100 * 2) / 2) : 0;
@@ -335,7 +342,8 @@ const payGoods = () => bonusX() > 0 ? fullBase() - bonusX() : orderBase();
 async function loadBonus() {
   const ph = coPhone.value.trim();
   BONUS.balance = 0;
-  if (ph.replace(/\D/g, '').length >= 9) try {
+  if (DEMO && ph.replace(/\D/g, '').length >= 9) BONUS.balance = 50;
+  else if (ph.replace(/\D/g, '').length >= 9) try {
     const r = await PIVKA_DB.client().rpc('bonus_info', { p_phone: ph });
     if (!r.error && r.data) BONUS = { ...BONUS, balance: Number(r.data.balance) || 0, pct: Number(r.data.spend_percent) || 10 }
   } catch (e) {}
@@ -1380,6 +1388,10 @@ function openCheckout(bundle = null) {
   track('checkout_start', { bundleId: checkoutBundle?.id || null, metadata: { total: orderBase() } });
   openSheet('checkoutOverlay')
 }
+function showDemoSuccess(r) {
+  checkoutBody.innerHTML = `<div class="success"><div class="big">🍻</div><h2>Рывок принят!</h2><p class="muted">Заказ №${r.order_number}<br>${Number(r.bonus_used) > 0 ? '💎 ' + esc(tr('Баллами')) + ': −' + money(r.bonus_used) + '<br>' : ''}Сумма: ${money(r.total)}</p><button class="skip" onclick="location.reload()">Готово</button></div>`
+}
+
 async function submitCheckout() {
   coError.textContent = '';
   if (Object.values(cart).some(x => x.p.unit === 'liter' && (x.qty < 2 || x.qty % 2 !== 0))) {
@@ -1444,6 +1456,13 @@ async function submitCheckout() {
       zoneId: fulfillment === 'delivery' ? coZone.value || null : null
     };
     // One server call: regular order or Рывок, pre-order time, friend's referral code, points.
+    if (DEMO) {
+      // nothing leaves the phone: a fake «Рывок принят» for the video
+      await new Promise(res => setTimeout(res, 700));
+      const fee = currentDeliveryFee();
+      showDemoSuccess({ order_number: 128, total: payGoods() + fee, bonus_used: bonusX() });
+      return
+    }
     const x = await PIVKA_DB.client().rpc('checkout_order', { p: {
       name: payload.name, phone: payload.phone, fulfillment, address: address || '', payment: payload.payment || 'cash', comment: payload.comment,
       items, zone: payload.zoneId, bundle: checkoutBundle?.id || null, city: payload.cityId, at: PRE ? PRE.toISOString() : null,
