@@ -319,6 +319,7 @@ const TRACK_KEY = 'pivka_last_order';
 // Referral: ?ref=CODE (a friend's personal link) is kept until this phone's first order; the server credits the
 // friend only if this is really a new customer. Points: up to 10 % of the products (not Рывки), no gift then.
 const REF_RE = /^[A-Z0-9]{4,10}$/;
+const SHARE_TEXT = '🍺 Пивка для рывка — пиво, шашлык и закуска с доставкой домой.\nЗаходи по моей ссылке и заказывай 👇\n{link}\nС твоего первого заказа мне начислят бонусные баллы — 50% от суммы. Тебе — вкусно, мне — бонус. Все довольны 😉';
 let REF = '';
 try {
   const q = (new URLSearchParams(location.search).get('ref') || '').toUpperCase();
@@ -358,7 +359,7 @@ async function referralCard(orderId) {
     if (r.error || !r.data?.code) return '';
     const d = r.data, link = location.origin + location.pathname.replace(/[^/]*$/, '') + '?ref=' + d.code;
     return '<div class="refCard"><b>🤝 ' + esc(tr('Пригласи друга — получи {p}% от его первого заказа баллами').replace('{p}', d.reward_percent)) + '</b>' +
-      '<span>' + esc(tr('Баллами можно оплатить до {p}% каждого заказа.').replace('{p}', d.spend_percent)) + (Number(d.balance) > 0 ? ' ' + esc(tr('У тебя')) + ': <b>' + money(d.balance) + '</b>' : '') + '</span>' +
+      '<span>' + esc(tr('1 балл = скидка 1 ₾, до {p}% каждого заказа. Баллы на наличные не меняются.').replace('{p}', d.spend_percent)) + (Number(d.balance) > 0 ? ' ' + esc(tr('У тебя')) + ': <b>' + money(d.balance) + '</b>' : '') + '</span>' +
       '<input readonly value="' + esc(link) + '" onclick="this.select()">' +
       '<button type="button" class="yellow checkout" onclick="shareRef(\'' + esc(link) + '\')">' + esc(tr('Отправить ссылку другу')) + '</button></div>'
   } catch (e) { return '' }
@@ -396,8 +397,9 @@ async function getRefLink() {
   refGo.disabled = false
 }
 async function shareRef(link) {
-  const text = tr('Пивка для рывка — пиво, шашлык и закуска с доставкой. Заказывай по моей ссылке:') + ' ' + link;
-  try { if (navigator.share) return await navigator.share({ text, url: link }) } catch (e) { return }
+  // Points are a discount, not money: the friend's text says «бонусные баллы», never «деньги».
+  const text = tr(SHARE_TEXT).replace('{link}', link);
+  try { if (navigator.share) return await navigator.share({ text }) } catch (e) { return }
   try { await navigator.clipboard.writeText(link); alert(tr('Ссылка скопирована')) } catch (e) { prompt('', link) }
 }
 const TRACK_KEEP_MS = 60e3; // a cancelled order's card disappears after a minute (owner, 2026-10-12)

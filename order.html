@@ -50,12 +50,12 @@ function refCard(d) {
   if (!d || !d.code) return '';
   const link = location.origin + location.pathname.replace(/[^/]*$/, '') + '?ref=' + d.code;
   return '<div class="refCard"><b>🤝 ' + esc(T('Пригласи друга — получи {p}% от его первого заказа баллами').replace('{p}', d.reward_percent)) + '</b>' +
-    '<span>' + esc(T('Баллами можно оплатить до {p}% каждого заказа.').replace('{p}', d.spend_percent)) + (Number(d.balance) > 0 ? ' ' + esc(T('У тебя')) + ': <b>' + money(d.balance) + '</b>' : '') + '</span>' +
+    '<span>' + esc(T('1 балл = скидка 1 ₾, до {p}% каждого заказа. Баллы на наличные не меняются.').replace('{p}', d.spend_percent)) + (Number(d.balance) > 0 ? ' ' + esc(T('У тебя')) + ': <b>' + money(d.balance) + '</b>' : '') + '</span>' +
     '<input readonly value="' + esc(link) + '" onclick="this.select()"><button type="button" class="btn yellow" id="shareRef">' + esc(T('Отправить ссылку другу')) + '</button></div>';
 }
 async function shareRef(link) {
-  const text = T('Пивка для рывка — пиво, шашлык и закуска с доставкой. Заказывай по моей ссылке:') + ' ' + link;
-  try { if (navigator.share) return await navigator.share({ text, url: link }) } catch (e) { return }
+  const text = T('🍺 Пивка для рывка — пиво, шашлык и закуска с доставкой домой.\nЗаходи по моей ссылке и заказывай 👇\n{link}\nС твоего первого заказа мне начислят бонусные баллы — 50% от суммы. Тебе — вкусно, мне — бонус. Все довольны 😉').replace('{link}', link);
+  try { if (navigator.share) return await navigator.share({ text }) } catch (e) { return }
   try { await navigator.clipboard.writeText(link); alert(T('Ссылка скопирована')) } catch (e) { prompt('', link) }
 }
 
@@ -130,7 +130,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 window.setLang = l => { document.documentElement.lang = l };
 load();
 </script>
-<script src="./js/i18n.js?v=20261014f"></script><script src="./js/chat.js?v=20261013b"></script>
+<script src="./js/i18n.js?v=20261015a"></script><script src="./js/chat.js?v=20261013b"></script>
 <script>
 (() => { let l = 'ru'; try { l = localStorage.getItem('pivka_lang') || (navigator.language || '').slice(0, 2) } catch (e) {} setLang(['ru', 'ka', 'hy'].includes(l) ? l : 'ru') })();
 </script>
