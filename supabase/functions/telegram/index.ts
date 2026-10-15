@@ -984,6 +984,17 @@ async function onPreorderMorning(cfg: Cfg) {
   return sent;
 }
 
+// Promo videos for the owner (to save into Photos from Telegram): only files from the site's promo folder.
+async function onOwnerVideo(cfg: Cfg, url: string, caption: string) {
+  if (!/^https:\/\/pivkadlaryvka\.ge\/promo\/[\w\/.-]+\.mp4$/.test(url)) throw new Error("Bad video url");
+  let sent = 0;
+  for (const l of await linksOf("OWNER")) {
+    try { await tg(cfg, "sendVideo", { chat_id: l.chat_id, video: url, caption: caption || "", supports_streaming: true }); sent++; }
+    catch (e) { console.error(e); }
+  }
+  return sent;
+}
+
 async function onStockMorning(cfg: Cfg) {
   const r = await owner(null as any, "morning");
   const sold = (r.sold || []) as any[], stock = (r.stock || []) as any[], paid = r.paid || {};
@@ -1216,6 +1227,7 @@ Deno.serve(async (req) => {
       if (b.action === "supplier_paid") return out({ sent: await onSupplierPaid(cfg, b.supplier_id, Number(b.amount)) });
       if (b.action === "support_in") return out({ sent: await onSupportIn(cfg, Number(b.message_id)) });
       if (b.action === "stock_morning") return out({ sent: await onStockMorning(cfg) });
+      if (b.action === "owner_video") return out({ sent: await onOwnerVideo(cfg, String(b.url || ""), String(b.caption || "")) });
       if (b.action === "preorder_morning") return out({ sent: await onPreorderMorning(cfg) });
       if (b.action === "support_blocked") return out({ sent: await onSupportBlocked(cfg, b.thread_id, b.until) });
       return out({ error: "Unknown action" }, 400);
