@@ -319,7 +319,7 @@ const TRACK_KEY = 'pivka_last_order';
 // Referral: ?ref=CODE (a friend's personal link) is kept until this phone's first order; the server credits the
 // friend only if this is really a new customer. Points: up to 10 % of the products (not Рывки), no gift then.
 const REF_RE = /^[A-Z0-9]{4,10}$/;
-const SHARE_TEXT = '🍺 Пивка для рывка — пиво, шашлык и закуска с доставкой домой.\nЗаходи по моей ссылке и заказывай 👇\n{link}\nС твоего первого заказа мне начислят бонусные баллы — 50% от суммы. Тебе — вкусно, мне — бонус. Все довольны 😉';
+const SHARE_TEXT = '🔥 Пивка для рывка — шашлык с мангала, шаурма, пицца, хачапури и закуски с доставкой домой.\nЗаказывай по моей ссылке 👇\n{link}\nС твоего первого заказа мне начислят бонусные баллы. А потом возьми свою ссылку — первая кнопка на сайте — и тоже получай 50% с заказов друзей 😉';
 let REF = '';
 try {
   const q = (new URLSearchParams(location.search).get('ref') || '').toUpperCase();
