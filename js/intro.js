@@ -211,5 +211,10 @@
     reveal();
     setTimeout(() => { if (typeof window.openRef === 'function') window.openRef() }, REVEAL_MS + 60);
   });
+  // pivkadlaryvka.ge/?invite — the link for stories: straight to «Пригласи друга» (take your own link), no credits
+  if (/[?&]invite(?:[=&]|$)/.test(location.search) || location.hash === '#invite') {
+    const go = document.getElementById('introRef');
+    if (go) setTimeout(() => go.click(), 150);
+  }
   document.addEventListener('keydown', e => { if (phase === 'hold' && e.key === 'Escape') reveal(); });
 })();
