@@ -62,9 +62,22 @@ function preLabel(d) {
   return day + ' ' + d.toLocaleTimeString('en-GB', { timeZone: 'Asia/Tbilisi', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
 }
 // Half-hour slots from ~40 minutes ahead for two days.
+// Store pause (store_settings «pause», public.store_pause): a notice on top and no pre-order slots inside the window.
+let PAUSE = null;
+const paused = (t) => !!PAUSE && t >= Date.parse(PAUSE.from) && t < Date.parse(PAUSE.until);
+async function loadPause() {
+  try {
+    const r = await PIVKA_DB.client().rpc('store_pause');
+    PAUSE = r.error ? null : r.data;
+  } catch (e) { PAUSE = null }
+  const el = document.getElementById('pauseNote');
+  if (el) { el.hidden = !PAUSE; el.textContent = PAUSE ? '⚠️ ' + tr(PAUSE.message || 'Сейчас не работаем') : '' }
+  renderPreBar()
+}
 function preOptions() {
   const step = 30 * 60e3, out = ['<option value="">' + esc(tr('Как можно скорее')) + '</option>'];
   for (let t = Math.ceil((Date.now() + 40 * 60e3) / step) * step; t < Date.now() + 48 * 3600e3; t += step)
+    if (!paused(t))
     out.push('<option value="' + t + '"' + (PRE && +PRE === t ? ' selected' : '') + '>' + esc(preLabel(new Date(t))) + '</option>');
   if (PRE && !out.some(o => o.includes('"' + +PRE + '"'))) out.splice(1, 0, '<option value="' + +PRE + '" selected>' + esc(preLabel(PRE)) + '</option>');
   return out.join('')
@@ -73,7 +86,7 @@ function renderPreBar() {
   const el = document.getElementById('preBar');
   if (!el) return;
   const closed = catalogAll.some(p => { const h = HOURS[p.id]; return h && h[0] && h[1] && !openNow(p) });
-  el.hidden = !PRE && !closed;
+  el.hidden = !PRE && !closed && !paused(Date.now());
   if (!el.hidden) el.innerHTML = '<label>🕐 ' + esc(tr(PRE ? 'Предзаказ — привезём к' : 'Предзаказ: выбери время — покажем всё, что будет в продаже')) +
     '<select onchange="setPre(this.value)">' + preOptions() + '</select></label>';
   if (typeof coWhen !== 'undefined' && coWhen) coWhen.innerHTML = preOptions()
@@ -1633,6 +1646,7 @@ observeNav();
       if (p.category_id && !catById[p.category_id]) catById[p.category_id] = { id: p.category_id, slug: slugOf(p), name: p.categories?.name || '' }
     });
     loadNight();
+    loadPause();
     syncBundle();
     renderBundles();
     renderNav();
