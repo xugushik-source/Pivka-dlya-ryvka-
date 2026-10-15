@@ -392,6 +392,12 @@ function openRef() {
   openSheet('refOverlay');
   track('ref_open')
 }
+// Came by the stories link (?invite) only to eat: close the sheet and go to the food.
+function refToMenu() {
+  closeSheet('refOverlay');
+  (document.getElementById('bundlesSection') || document.getElementById('buildSection'))?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  track('ref_to_menu')
+}
 async function getRefLink() {
   refError.textContent = '';
   const phone = refPhone.value.trim();
