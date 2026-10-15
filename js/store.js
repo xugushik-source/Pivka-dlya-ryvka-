@@ -664,6 +664,17 @@ function icon(p) {
   return ['strong', 'vodka', 'whisky', 'brandy', 'rum', 'gin', 'tequila', 'wine'].includes(x) ? '🥃' : x === 'fish' ? '🐟' : x === 'cheese' ? '🧀' : x === 'snacks' ? '🥨' : x === 'chips' ? '🍟' : x === 'nuts' ? '🥜' : x === 'soft-drinks' ? '🥤' : '🍺'
 }
 
+// Android / iOS keyboard: keep open sheets inside the visible part of the screen and the focused field in view.
+(function () {
+  const vv = window.visualViewport, root = document.documentElement;
+  const fit = () => { if (!vv) return; root.style.setProperty('--vvh', vv.height + 'px'); root.style.setProperty('--vvt', vv.offsetTop + 'px') };
+  if (vv) { vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit); fit() }
+  document.addEventListener('focusin', (e) => {
+    const t = e.target;
+    if (!t.matches || !t.matches('.sheet input, .sheet textarea, .sheet select')) return;
+    setTimeout(() => { fit(); t.scrollIntoView({ block: 'center', behavior: 'smooth' }) }, 320)
+  })
+})();
 function openSheet(id) {
   document.getElementById(id).classList.add('on')
 }
