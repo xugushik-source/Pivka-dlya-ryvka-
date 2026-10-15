@@ -381,7 +381,7 @@ async function getRefLink() {
   if (phone.replace(/\D/g, '').length < 9) { refError.textContent = tr('Укажи номер телефона'); return }
   refGo.disabled = true;
   try {
-    const r = await PIVKA_DB.client().rpc('my_ref_link', { p_phone: phone, p_name: refName.value.trim() || null });
+    const r = await PIVKA_DB.client().rpc('my_ref_link', { p_phone: phone, p_name: refName.value.trim() || null, p_ref: REF || null });
     if (r.error) throw r.error;
     const d = r.data, link = location.origin + location.pathname.replace(/[^/]*$/, '') + '?ref=' + d.code;
     try { const p = JSON.parse(localStorage.getItem('pivka_profile') || '{}'); localStorage.setItem('pivka_profile', JSON.stringify({ ...p, phone, name: refName.value.trim() || p.name || '' })) } catch (e) {}
