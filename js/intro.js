@@ -54,6 +54,11 @@
       ref: '🤝 Ուղարկիր ընկերոջդ հղումը — ստացիր նրա պատվերի 50%-ը'
     }
   };
+  // «Пригласи друга» runs until 30.10 (same date as store_settings.referral.until): later its frame and button go.
+  if (Date.now() > Date.parse('2026-10-30T23:59:59+04:00')) {
+    Object.values(copy).forEach(c => { c.frames = c.frames.filter(f => !String(f[0]).startsWith('🤝')) });
+    document.getElementById('introRef')?.remove();
+  }
   const t = () => copy[root.lang] || copy.ru;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   // Full credits on every visit. Only the reload right after a placed order is short (store.js sets the flag).

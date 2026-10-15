@@ -364,6 +364,15 @@ async function referralCard(orderId) {
       '<button type="button" class="yellow checkout" onclick="shareRef(\'' + esc(link) + '\')">' + esc(tr('Отправить ссылку другу')) + '</button></div>'
   } catch (e) { return '' }
 }
+// «Пригласи друга» is a campaign (store_settings.referral.until): when it is over, the button and the curtain line go.
+(async () => {
+  try {
+    const r = await PIVKA_DB.client().rpc('referral_status');
+    if (r.error || !r.data || r.data.active) return;
+    document.getElementById('refBanner')?.remove();
+    document.getElementById('introRef')?.remove()
+  } catch (e) {}
+})();
 // Home page: anyone gets the personal link by phone — no order needed (virality first).
 function openRef() {
   try {
