@@ -802,7 +802,7 @@ async function onSupportOwnerMessage(cfg: Cfg, m: any) {
 // Steps that need a number keep their state in tg_owner_state (30 min). Every action is checked in tg_owner by the owner's chat.
 
 const OWNER_MENU = {
-  keyboard: [[{ text: "📥 Приход" }, { text: "💸 Оплата" }], [{ text: "📦 Склад" }, { text: "📊 Долги" }], [{ text: "🤝 Рефералы" }]],
+  keyboard: [[{ text: "📥 Приход" }, { text: "💸 Оплата" }], [{ text: "📦 Склад" }, { text: "📊 Долги" }], [{ text: "🤝 Рефералы" }, { text: "🛵 Курьеры" }]],
   resize_keyboard: true, is_persistent: true,
 };
 const wcb = (act: string, arg = "") => `w|${act}${arg ? "|" + arg : ""}`;
@@ -904,6 +904,7 @@ async function onOwnerText(cfg: Cfg, m: any) {
   }
   if (/склад/.test(low)) { await say(cfg, chat, stockText(await owner(chat, "stock"))); return true; }
   if (/долг/.test(low)) { await say(cfg, chat, debtsText(await owner(chat, "suppliers"))); return true; }
+  if (/курьер/.test(low)) { await say(cfg, chat, rosterText(await courierRoster())); return true; }
   if (/рефер|бонус|балл/.test(low)) { await say(cfg, chat, referralsText(await owner(chat, "referrals"))); return true; }
   if (/^\/?(меню|menu)$/.test(low)) { await say(cfg, chat, "Меню внизу 👇"); return true; }
 
@@ -1109,6 +1110,84 @@ async function onOwnerCallback(cfg: Cfg, q: any, act: string, id: string, arg: s
   return answer("Заказ отменён");
 }
 
+// ---------- Courier shifts: 09:00 «Сегодня работаешь?» → весь день / с … до … / не работаю; 10:00 reminder + roster.
+const kcb = (act: string, a = "", b = "") => `k|${act}|${a}|${b}`;
+const tbilisiDay = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Tbilisi" });
+const hh = (h: number) => `${String(h % 24).padStart(2, "0")}:00`;
+const shiftLine = (s: any) => !s ? "⏳ не ответил"
+  : s.mode === "OFF" ? "❌ не работает"
+  : s.mode === "DAY" ? "☀️ весь день, с утра до ночи"
+  : `🕐 с ${hh(s.from_h)} ${s.to_h == null ? "до ночи" : "до " + hh(s.to_h)}`;
+const shiftAsk = { inline_keyboard: [
+  [{ text: "☀️ Весь день (с утра до ночи)", callback_data: kcb("day") }],
+  [{ text: "🕐 Выбрать часы: с … до …", callback_data: kcb("hrs") }],
+  [{ text: "❌ Сегодня не работаю", callback_data: kcb("off") }],
+] };
+const rows = (btns: any[], n = 4) => btns.reduce((a: any[][], b, i) => (i % n ? a[a.length - 1].push(b) : a.push([b]), a), []);
+
+async function courierRoster() {
+  const day = tbilisiDay();
+  const links = await linksOf("DRIVER");
+  const ids = [...new Set(links.map((l: any) => l.ref_id).filter(Boolean))];
+  if (!ids.length) return { day, list: [] as any[] };
+  const { data: ds } = await db.from("drivers").select("id,name,active").in("id", ids);
+  const { data: sh } = await db.from("driver_shifts").select("driver_id,mode,from_h,to_h").eq("day", day).in("driver_id", ids);
+  const by = new Map((sh || []).map((x: any) => [x.driver_id, x]));
+  return { day, list: (ds || []).filter((d: any) => d.active).map((d: any) => ({ ...d, shift: by.get(d.id) || null })) };
+}
+function rosterText(r: any) {
+  const on = r.list.filter((d: any) => d.shift && d.shift.mode !== "OFF").length;
+  const silent = r.list.filter((d: any) => !d.shift).length;
+  return [`🛵 <b>Курьеры на сегодня</b> (${r.day.split("-").reverse().slice(0, 2).join(".")})`,
+    `Работают: <b>${on}</b> из ${r.list.length}${silent ? ` · не ответили: ${silent}` : ""}`, "",
+    ...r.list.map((d: any) => `${esc(d.name || "Курьер")} — ${shiftLine(d.shift)}`)].join("\n");
+}
+async function onCourierMorning(cfg: Cfg, remind = false) {
+  const r = await courierRoster();
+  let sent = 0;
+  for (const l of await linksOf("DRIVER")) {
+    const d = r.list.find((x: any) => x.id === l.ref_id);
+    if (!d || (remind && d.shift)) continue;
+    try {
+      await tg(cfg, "sendMessage", { chat_id: l.chat_id, parse_mode: "HTML", reply_markup: shiftAsk,
+        text: remind ? `⏰ ${esc(d.name || "")}, ты ещё не ответил: <b>сегодня работаешь?</b>` : `☀️ Доброе утро, ${esc(d.name || "")}! <b>Сегодня работаешь?</b>` });
+      sent++;
+    } catch (e) { console.error(e); }
+  }
+  if (remind) for (const o of await linksOf("OWNER")) await quiet(say(cfg, o.chat_id, rosterText(await courierRoster())));
+  return sent;
+}
+async function onCourierCallback(cfg: Cfg, q: any, act: string, a: string, b: string) {
+  const answer = (text = "", alert = false) => quiet(tg(cfg, "answerCallbackQuery", { callback_query_id: q.id, text, show_alert: alert }));
+  const chat = q.message?.chat?.id, msg = q.message?.message_id;
+  const { data: link } = await db.from("telegram_links").select("ref_id").eq("kind", "DRIVER").eq("active", true).eq("chat_id", chat).maybeSingle();
+  if (!link?.ref_id) return answer("Это только для курьеров.", true);
+  const edit = (text: string, reply_markup: unknown) => quiet(tg(cfg, "editMessageText", { chat_id: chat, message_id: msg, text, parse_mode: "HTML", reply_markup }));
+  if (act === "ask") { await edit("<b>Сегодня работаешь?</b>", shiftAsk); return answer(); }
+  if (act === "hrs") {
+    const now = Number(new Date().toLocaleString("en-GB", { timeZone: "Asia/Tbilisi", hour: "2-digit", hourCycle: "h23" }));
+    const from = Array.from({ length: 24 - Math.max(8, now) }, (_, i) => Math.max(8, now) + i);
+    await edit("🕐 <b>С какого часа?</b>", { inline_keyboard: [...rows(from.map((h) => ({ text: hh(h), callback_data: kcb("from", String(h)) }))), [{ text: "← Назад", callback_data: kcb("ask") }]] });
+    return answer();
+  }
+  if (act === "from") {
+    const f = Number(a), to = Array.from({ length: Math.max(0, 27 - f) }, (_, i) => f + 1 + i).filter((h) => h <= 27);
+    await edit(`🕐 С ${hh(f)} — <b>до какого часа?</b>`, { inline_keyboard: [[{ text: "🌙 До ночи", callback_data: kcb("set", String(f), "n") }],
+      ...rows(to.map((h) => ({ text: hh(h), callback_data: kcb("set", String(f), String(h)) }))), [{ text: "← Назад", callback_data: kcb("hrs") }]] });
+    return answer();
+  }
+  const row = act === "day" ? { mode: "DAY", from_h: null, to_h: null }
+    : act === "off" ? { mode: "OFF", from_h: null, to_h: null }
+    : act === "set" ? { mode: "HOURS", from_h: Number(a), to_h: b === "n" ? null : Number(b) } : null;
+  if (!row) return answer();
+  const { error } = await db.from("driver_shifts").upsert({ driver_id: link.ref_id, day: tbilisiDay(), ...row, answered_at: new Date().toISOString() });
+  if (error) { console.error(error); return answer("Не сохранилось, попробуй ещё раз", true); }
+  await edit(`✅ Записал на сегодня: <b>${shiftLine(row).replace(/^\S+\s/, "")}</b>`, { inline_keyboard: [[{ text: "✏️ Изменить", callback_data: kcb("ask") }]] });
+  const r = await courierRoster(), d = r.list.find((x: any) => x.id === link.ref_id);
+  for (const o of await linksOf("OWNER")) await quiet(say(cfg, o.chat_id, `🛵 ${esc(d?.name || "Курьер")}: ${shiftLine(row)}\n\n${rosterText(r)}`));
+  return answer("Записал ✅");
+}
+
 async function onCallback(cfg: Cfg, q: any) {
   const answer = (text = "", alert = false) => quiet(tg(cfg, "answerCallbackQuery", { callback_query_id: q.id, text, show_alert: alert }));
   const chat = q.message?.chat?.id, msg = q.message?.message_id;
@@ -1117,6 +1196,7 @@ async function onCallback(cfg: Cfg, q: any) {
   if (kind === "d" && id && chat) return onDayCallback(cfg, q, act, id);
   if (kind === "o" && id && chat) return onOwnerCallback(cfg, q, act, id, arg ?? "");
   if (kind === "w" && act && chat) return onOwnerMenuCallback(cfg, q, act, id ?? "");
+  if (kind === "k" && act && chat) return onCourierCallback(cfg, q, act, id ?? "", arg ?? "");
   if (kind !== "c" || !id || !chat) return answer();
 
   if (act === "cm") { await quiet(tg(cfg, "editMessageReplyMarkup", { chat_id: chat, message_id: msg, reply_markup: reasonsKeyboard(id) })); return answer("Почему отменяем?"); }
@@ -1242,6 +1322,8 @@ Deno.serve(async (req) => {
       if (b.action === "support_in") return out({ sent: await onSupportIn(cfg, Number(b.message_id)) });
       if (b.action === "stock_morning") return out({ sent: await onStockMorning(cfg) });
       if (b.action === "owner_video") return out({ sent: await onOwnerVideo(cfg, String(b.url || ""), String(b.caption || "")) });
+      if (b.action === "courier_morning") return out({ sent: await onCourierMorning(cfg) });
+      if (b.action === "courier_remind") return out({ sent: await onCourierMorning(cfg, true) });
       if (b.action === "preorder_morning") return out({ sent: await onPreorderMorning(cfg) });
       if (b.action === "support_blocked") return out({ sent: await onSupportBlocked(cfg, b.thread_id, b.until) });
       return out({ error: "Unknown action" }, 400);
