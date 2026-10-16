@@ -1110,82 +1110,164 @@ async function onOwnerCallback(cfg: Cfg, q: any, act: string, id: string, arg: s
   return answer("Заказ отменён");
 }
 
-// ---------- Courier shifts: 09:00 «Сегодня работаешь?» → весь день / с … до … / не работаю; 10:00 reminder + roster.
+// ---------- Courier shifts. 09:00 — one poll in every courier chat (the couriers' group): each courier marks himself,
+// the pressing Telegram user → driver_tg → driver (first time: «кто ты?»). The answer is final for the day; the only
+// way out is «🚨 Экстренно ухожу со смены» — once a day, after a warning, the owner is told at once.
+// 10:00 — a reminder in the group for the silent ones and the roster for the owner.
 const kcb = (act: string, a = "", b = "") => `k|${act}|${a}|${b}`;
 const tbilisiDay = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Tbilisi" });
+const tbilisiHour = () => Number(new Date().toLocaleString("en-GB", { timeZone: "Asia/Tbilisi", hour: "2-digit", hourCycle: "h23" }));
 const hh = (h: number) => `${String(h % 24).padStart(2, "0")}:00`;
-const shiftLine = (s: any) => !s ? "⏳ не ответил"
+const shiftLine = (s: any) => !s ? "⏳ не отметился"
+  : s.left_at ? `🚨 экстренно ушёл в ${hm(s.left_at)}`
   : s.mode === "OFF" ? "❌ не работает"
   : s.mode === "DAY" ? "☀️ весь день, с утра до ночи"
   : `🕐 с ${hh(s.from_h)} ${s.to_h == null ? "до ночи" : "до " + hh(s.to_h)}`;
-const shiftAsk = { inline_keyboard: [
-  [{ text: "☀️ Весь день (с утра до ночи)", callback_data: kcb("day") }],
-  [{ text: "🕐 Выбрать часы: с … до …", callback_data: kcb("hrs") }],
+const pollKeyboard = { inline_keyboard: [
+  [{ text: "☀️ Весь день", callback_data: kcb("day") }, { text: "🕐 С … до …", callback_data: kcb("hrs") }],
   [{ text: "❌ Сегодня не работаю", callback_data: kcb("off") }],
+  [{ text: "🚨 Экстренно ухожу со смены", callback_data: kcb("exit") }],
 ] };
 const rows = (btns: any[], n = 4) => btns.reduce((a: any[][], b, i) => (i % n ? a[a.length - 1].push(b) : a.push([b]), a), []);
 
-async function courierRoster() {
+// Couriers of the cities served by a chat (a group of Ахалкалаки couriers sees all of them); no chat → everyone.
+async function courierRoster(chat?: number) {
   const day = tbilisiDay();
-  const links = await linksOf("DRIVER");
-  const ids = [...new Set(links.map((l: any) => l.ref_id).filter(Boolean))];
-  if (!ids.length) return { day, list: [] as any[] };
-  const { data: ds } = await db.from("drivers").select("id,name,active").in("id", ids);
-  const { data: sh } = await db.from("driver_shifts").select("driver_id,mode,from_h,to_h").eq("day", day).in("driver_id", ids);
+  let q = db.from("drivers").select("id,name,city_id").eq("active", true).order("name");
+  if (chat) {
+    const { data: ls } = await db.from("telegram_links").select("ref_id").eq("kind", "DRIVER").eq("active", true).eq("chat_id", chat);
+    const { data: ds } = await db.from("drivers").select("city_id").in("id", (ls || []).map((l: any) => l.ref_id).filter(Boolean));
+    const cities = [...new Set((ds || []).map((d: any) => d.city_id).filter(Boolean))];
+    if (cities.length) q = q.in("city_id", cities);
+  }
+  const { data: ds } = await q;
+  const { data: sh } = await db.from("driver_shifts").select("driver_id,mode,from_h,to_h,left_at").eq("day", day);
   const by = new Map((sh || []).map((x: any) => [x.driver_id, x]));
-  return { day, list: (ds || []).filter((d: any) => d.active).map((d: any) => ({ ...d, shift: by.get(d.id) || null })) };
+  return { day, list: (ds || []).map((d: any) => ({ ...d, shift: by.get(d.id) || null })) };
 }
-function rosterText(r: any) {
-  const on = r.list.filter((d: any) => d.shift && d.shift.mode !== "OFF").length;
+function rosterText(r: any, title = "🛵 <b>Курьеры на сегодня</b>") {
+  const on = r.list.filter((d: any) => d.shift && d.shift.mode !== "OFF" && !d.shift.left_at).length;
   const silent = r.list.filter((d: any) => !d.shift).length;
-  return [`🛵 <b>Курьеры на сегодня</b> (${r.day.split("-").reverse().slice(0, 2).join(".")})`,
-    `Работают: <b>${on}</b> из ${r.list.length}${silent ? ` · не ответили: ${silent}` : ""}`, "",
+  return [`${title} (${r.day.split("-").reverse().slice(0, 2).join(".")})`,
+    `Работают: <b>${on}</b> из ${r.list.length}${silent ? ` · не отметились: ${silent}` : ""}`, "",
     ...r.list.map((d: any) => `${esc(d.name || "Курьер")} — ${shiftLine(d.shift)}`)].join("\n");
 }
+const pollText = (r: any) => rosterText(r, "☀️ <b>Доброе утро! Кто сегодня работает?</b> Каждый отмечает себя сам") +
+  "\n\n<i>Отметка — на весь день, поменять её нельзя. «🚨 Экстренно ухожу» — только в крайнем случае, 1 раз в день.</i>";
+async function courierChats() {
+  return [...new Set((await linksOf("DRIVER")).map((l: any) => Number(l.chat_id)))];
+}
+async function refreshPolls(cfg: Cfg) {
+  const { data } = await db.from("courier_polls").select("chat_id,message_id").eq("day", tbilisiDay());
+  for (const p of data || []) await quiet(tg(cfg, "editMessageText", { chat_id: p.chat_id, message_id: p.message_id, text: pollText(await courierRoster(p.chat_id)), parse_mode: "HTML", reply_markup: pollKeyboard }));
+}
+async function tellOwner(cfg: Cfg, text: string) {
+  for (const o of await linksOf("OWNER")) await quiet(say(cfg, o.chat_id, text));
+}
 async function onCourierMorning(cfg: Cfg, remind = false) {
-  const r = await courierRoster();
   let sent = 0;
-  for (const l of await linksOf("DRIVER")) {
-    const d = r.list.find((x: any) => x.id === l.ref_id);
-    if (!d || (remind && d.shift)) continue;
+  for (const chat of await courierChats()) {
+    const r = await courierRoster(chat);
     try {
-      await tg(cfg, "sendMessage", { chat_id: l.chat_id, parse_mode: "HTML", reply_markup: shiftAsk,
-        text: remind ? `⏰ ${esc(d.name || "")}, ты ещё не ответил: <b>сегодня работаешь?</b>` : `☀️ Доброе утро, ${esc(d.name || "")}! <b>Сегодня работаешь?</b>` });
+      if (remind) {
+        const silent = r.list.filter((d: any) => !d.shift);
+        if (!silent.length) continue;
+        await tg(cfg, "sendMessage", { chat_id: chat, parse_mode: "HTML", text: `⏰ Ещё не отметились: ${silent.map((d: any) => esc(d.name)).join(", ")}. Отметьтесь в утреннем сообщении 👆` });
+      } else {
+        const m = await tg(cfg, "sendMessage", { chat_id: chat, parse_mode: "HTML", text: pollText(r), reply_markup: pollKeyboard });
+        await db.from("courier_polls").upsert({ day: r.day, chat_id: chat, message_id: m.message_id });
+      }
       sent++;
     } catch (e) { console.error(e); }
   }
-  if (remind) for (const o of await linksOf("OWNER")) await quiet(say(cfg, o.chat_id, rosterText(await courierRoster())));
+  if (remind) await tellOwner(cfg, rosterText(await courierRoster()));
   return sent;
 }
 async function onCourierCallback(cfg: Cfg, q: any, act: string, a: string, b: string) {
   const answer = (text = "", alert = false) => quiet(tg(cfg, "answerCallbackQuery", { callback_query_id: q.id, text, show_alert: alert }));
-  const chat = q.message?.chat?.id, msg = q.message?.message_id;
-  const { data: link } = await db.from("telegram_links").select("ref_id").eq("kind", "DRIVER").eq("active", true).eq("chat_id", chat).maybeSingle();
-  if (!link?.ref_id) return answer("Это только для курьеров.", true);
-  const edit = (text: string, reply_markup: unknown) => quiet(tg(cfg, "editMessageText", { chat_id: chat, message_id: msg, text, parse_mode: "HTML", reply_markup }));
-  if (act === "ask") { await edit("<b>Сегодня работаешь?</b>", shiftAsk); return answer(); }
+  const chat = q.message?.chat?.id, msg = q.message?.message_id, user = q.from?.id;
+  if (!(await courierChats()).includes(Number(chat))) return answer("Это только для чата курьеров.", true);
+  const r = await courierRoster(chat);
+  // «Кто ты?» — the first press of a Telegram user in the couriers' chat links him to a courier.
+  if (act === "me") {
+    const d = r.list.find((x: any) => x.id === a);
+    if (!d) return answer();
+    const { data: taken } = await db.from("driver_tg").select("user_id").eq("driver_id", d.id).maybeSingle();
+    if (taken && Number(taken.user_id) !== user) return answer("Этот курьер уже отмечен за другим человеком. Скажите владельцу.", true);
+    await db.from("driver_tg").upsert({ user_id: user, driver_id: d.id });
+    // placeholder names («Курьер 2») become the Telegram name
+    if (/^Курьер\s*\d*$/i.test(d.name || "") && q.from?.first_name) await db.from("drivers").update({ name: String(q.from.first_name).slice(0, 40) }).eq("id", d.id);
+    await quiet(tg(cfg, "deleteMessage", { chat_id: chat, message_id: msg }));
+    await refreshPolls(cfg);
+    return answer("Готово ✅ Теперь нажмите свою отметку в утреннем сообщении", true);
+  }
+  const { data: me } = await db.from("driver_tg").select("driver_id").eq("user_id", user).maybeSingle();
+  const d = me && r.list.find((x: any) => x.id === me.driver_id);
+  if (!d && await isOwnerChat(user)) return answer("Отмечаются сами курьеры. Сводка — «🛵 Курьеры» в меню бота.", true);
+  if (!d) {
+    const free = [];
+    for (const x of r.list) { const { data: t } = await db.from("driver_tg").select("user_id").eq("driver_id", x.id).maybeSingle(); if (!t) free.push(x); }
+    if (!free.length) return answer("Вас нет в списке курьеров. Скажите владельцу.", true);
+    await quiet(tg(cfg, "sendMessage", { chat_id: chat, parse_mode: "HTML", text: `👤 ${esc(q.from?.first_name || "")}, кто вы в списке курьеров? (один раз)`,
+      reply_markup: { inline_keyboard: rows(free.map((x: any) => ({ text: x.name || "Курьер", callback_data: kcb("me", x.id) })), 2) } }));
+    return answer("Сначала выберите себя в списке ниже 👇");
+  }
+  const s = d.shift;
+  const mine = (id: string) => id === d.id;
+
+  if (act === "exit" || act === "exitok") {
+    if (!s || s.mode === "OFF") return answer("Вы сегодня не на смене.", true);
+    if (s.left_at) return answer("Экстренный выход сегодня уже был. Больше нельзя — звоните владельцу.", true);
+    if (act === "exit") {
+      await quiet(tg(cfg, "sendMessage", { chat_id: chat, parse_mode: "HTML",
+        text: `⚠️ <b>${esc(d.name)}, это экстренная кнопка.</b>\nМожно только 1 раз в день и только если правда случилось что-то серьёзное. После неё смена на сегодня закончена — вернуться уже нельзя, владелец сразу получит сообщение.\nЕсли просто хочется уйти пораньше — договаривайтесь с владельцем заранее, а не кнопкой.`,
+        reply_markup: { inline_keyboard: [[{ text: "🚨 Да, ухожу — экстренно", callback_data: kcb("exitok", d.id) }], [{ text: "✖️ Нет, остаюсь", callback_data: kcb("no", d.id) }]] } }));
+      return answer();
+    }
+    if (!mine(a)) return answer("Это не ваша кнопка.", true);
+    await db.from("driver_shifts").update({ left_at: new Date().toISOString() }).eq("driver_id", d.id).eq("day", r.day);
+    await quiet(tg(cfg, "editMessageText", { chat_id: chat, message_id: msg, parse_mode: "HTML", text: `🚨 ${esc(d.name)} экстренно ушёл со смены в ${hm(new Date().toISOString())}.` }));
+    await refreshPolls(cfg);
+    await tellOwner(cfg, `🚨 <b>${esc(d.name)} ЭКСТРЕННО ушёл со смены</b> в ${hm(new Date().toISOString())}\n\n${rosterText(await courierRoster())}`);
+    return answer("Записано. Владелец предупреждён.");
+  }
+  if (act === "no") {
+    if (!mine(a)) return answer("Это не ваша кнопка.", true);
+    await quiet(tg(cfg, "deleteMessage", { chat_id: chat, message_id: msg }));
+    return answer("Хорошо, работаем 💪");
+  }
+  if (s) return answer(`Вы уже отметились: ${shiftLine(s)}. Поменять нельзя — если срочно, «🚨 Экстренно ухожу» (1 раз в день) или звоните владельцу.`, true);
+
   if (act === "hrs") {
-    const now = Number(new Date().toLocaleString("en-GB", { timeZone: "Asia/Tbilisi", hour: "2-digit", hourCycle: "h23" }));
-    const from = Array.from({ length: 24 - Math.max(8, now) }, (_, i) => Math.max(8, now) + i);
-    await edit("🕐 <b>С какого часа?</b>", { inline_keyboard: [...rows(from.map((h) => ({ text: hh(h), callback_data: kcb("from", String(h)) }))), [{ text: "← Назад", callback_data: kcb("ask") }]] });
+    const st = Math.max(8, tbilisiHour());
+    const from = Array.from({ length: Math.max(1, 24 - st) }, (_, i) => Math.min(23, st + i));
+    await quiet(tg(cfg, "sendMessage", { chat_id: chat, parse_mode: "HTML", text: `🕐 <b>${esc(d.name)}</b>, с какого часа?`,
+      reply_markup: { inline_keyboard: [...rows(from.map((h) => ({ text: hh(h), callback_data: kcb("from", d.id, String(h)) }))), [{ text: "✖️ Отмена", callback_data: kcb("no", d.id) }]] } }));
     return answer();
   }
   if (act === "from") {
-    const f = Number(a), to = Array.from({ length: Math.max(0, 27 - f) }, (_, i) => f + 1 + i).filter((h) => h <= 27);
-    await edit(`🕐 С ${hh(f)} — <b>до какого часа?</b>`, { inline_keyboard: [[{ text: "🌙 До ночи", callback_data: kcb("set", String(f), "n") }],
-      ...rows(to.map((h) => ({ text: hh(h), callback_data: kcb("set", String(f), String(h)) }))), [{ text: "← Назад", callback_data: kcb("hrs") }]] });
+    if (!mine(a)) return answer("Это не ваша кнопка.", true);
+    const f = Number(b), to = Array.from({ length: 27 - f }, (_, i) => f + 1 + i);
+    await quiet(tg(cfg, "editMessageText", { chat_id: chat, message_id: msg, parse_mode: "HTML", text: `🕐 <b>${esc(d.name)}</b>: с ${hh(f)} — до какого часа?`,
+      reply_markup: { inline_keyboard: [[{ text: "🌙 До ночи", callback_data: kcb("set", d.id, f + "-n") }],
+        ...rows(to.map((h) => ({ text: hh(h), callback_data: kcb("set", d.id, f + "-" + h) }))), [{ text: "✖️ Отмена", callback_data: kcb("no", d.id) }]] } }));
     return answer();
   }
-  const row = act === "day" ? { mode: "DAY", from_h: null, to_h: null }
-    : act === "off" ? { mode: "OFF", from_h: null, to_h: null }
-    : act === "set" ? { mode: "HOURS", from_h: Number(a), to_h: b === "n" ? null : Number(b) } : null;
+  let row: any = null;
+  if (act === "day") row = { mode: "DAY", from_h: null, to_h: null };
+  if (act === "off") row = { mode: "OFF", from_h: null, to_h: null };
+  if (act === "set") {
+    if (!mine(a)) return answer("Это не ваша кнопка.", true);
+    const [f, t] = b.split("-");
+    row = { mode: "HOURS", from_h: Number(f), to_h: t === "n" ? null : Number(t) };
+    await quiet(tg(cfg, "deleteMessage", { chat_id: chat, message_id: msg }));
+  }
   if (!row) return answer();
-  const { error } = await db.from("driver_shifts").upsert({ driver_id: link.ref_id, day: tbilisiDay(), ...row, answered_at: new Date().toISOString() });
-  if (error) { console.error(error); return answer("Не сохранилось, попробуй ещё раз", true); }
-  await edit(`✅ Записал на сегодня: <b>${shiftLine(row).replace(/^\S+\s/, "")}</b>`, { inline_keyboard: [[{ text: "✏️ Изменить", callback_data: kcb("ask") }]] });
-  const r = await courierRoster(), d = r.list.find((x: any) => x.id === link.ref_id);
-  for (const o of await linksOf("OWNER")) await quiet(say(cfg, o.chat_id, `🛵 ${esc(d?.name || "Курьер")}: ${shiftLine(row)}\n\n${rosterText(r)}`));
-  return answer("Записал ✅");
+  const { error } = await db.from("driver_shifts").insert({ driver_id: d.id, day: r.day, ...row });
+  if (error) { console.error(error); return answer("Вы уже отметились сегодня.", true); }
+  await refreshPolls(cfg);
+  await tellOwner(cfg, `🛵 ${esc(d.name)}: ${shiftLine(row)}\n\n${rosterText(await courierRoster())}`);
+  return answer("Записал ✅ " + shiftLine(row));
 }
 
 async function onCallback(cfg: Cfg, q: any) {
