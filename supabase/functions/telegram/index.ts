@@ -1183,6 +1183,18 @@ async function onCourierMorning(cfg: Cfg, remind = false) {
   if (remind) await tellOwner(cfg, rosterText(await courierRoster()));
   return sent;
 }
+// A Telegram user pressed a courier button in the group for the first time: «кто вы в списке курьеров?» (once).
+async function askWho(cfg: Cfg, q: any, r?: any) {
+  const answer = (text = "", alert = false) => quiet(tg(cfg, "answerCallbackQuery", { callback_query_id: q.id, text, show_alert: alert }));
+  const chat = q.message?.chat?.id;
+  r = r || await courierRoster(chat);
+  const free = [];
+  for (const x of r.list) { const { data: t } = await db.from("driver_tg").select("user_id").eq("driver_id", x.id).maybeSingle(); if (!t) free.push(x); }
+  if (!free.length) return answer("Вас нет в списке курьеров. Скажите владельцу.", true);
+  await quiet(tg(cfg, "sendMessage", { chat_id: chat, parse_mode: "HTML", text: `👤 ${esc(q.from?.first_name || "")}, кто вы в списке курьеров? Нажмите себя (один раз — дальше бот вас помнит)`,
+    reply_markup: { inline_keyboard: rows(free.map((x: any) => ({ text: x.name || "Курьер", callback_data: kcb("me", x.id) })), 2) } }));
+  return answer("Сначала выберите себя в списке ниже 👇, потом нажмите кнопку ещё раз", true);
+}
 async function onCourierCallback(cfg: Cfg, q: any, act: string, a: string, b: string) {
   const answer = (text = "", alert = false) => quiet(tg(cfg, "answerCallbackQuery", { callback_query_id: q.id, text, show_alert: alert }));
   const chat = q.message?.chat?.id, msg = q.message?.message_id, user = q.from?.id;
@@ -1199,19 +1211,12 @@ async function onCourierCallback(cfg: Cfg, q: any, act: string, a: string, b: st
     if (/^Курьер\s*\d*$/i.test(d.name || "") && q.from?.first_name) await db.from("drivers").update({ name: String(q.from.first_name).slice(0, 40) }).eq("id", d.id);
     await quiet(tg(cfg, "deleteMessage", { chat_id: chat, message_id: msg }));
     await refreshPolls(cfg);
-    return answer("Готово ✅ Теперь нажмите свою отметку в утреннем сообщении", true);
+    return answer("Готово ✅ Бот вас запомнил. Теперь нажмите нужную кнопку ещё раз.", true);
   }
   const { data: me } = await db.from("driver_tg").select("driver_id").eq("user_id", user).maybeSingle();
   const d = me && r.list.find((x: any) => x.id === me.driver_id);
   if (!d && await isOwnerChat(user)) return answer("Отмечаются сами курьеры. Сводка — «🛵 Курьеры» в меню бота.", true);
-  if (!d) {
-    const free = [];
-    for (const x of r.list) { const { data: t } = await db.from("driver_tg").select("user_id").eq("driver_id", x.id).maybeSingle(); if (!t) free.push(x); }
-    if (!free.length) return answer("Вас нет в списке курьеров. Скажите владельцу.", true);
-    await quiet(tg(cfg, "sendMessage", { chat_id: chat, parse_mode: "HTML", text: `👤 ${esc(q.from?.first_name || "")}, кто вы в списке курьеров? (один раз)`,
-      reply_markup: { inline_keyboard: rows(free.map((x: any) => ({ text: x.name || "Курьер", callback_data: kcb("me", x.id) })), 2) } }));
-    return answer("Сначала выберите себя в списке ниже 👇");
-  }
+  if (!d) return askWho(cfg, q, r);
   const s = d.shift;
   const mine = (id: string) => id === d.id;
 
@@ -1297,7 +1302,8 @@ async function onCallback(cfg: Cfg, q: any) {
     } catch { return answer("Сначала откройте личный чат с ботом (нажмите Start), потом снова «Изменить».", true); }
   }
 
-  const { data: r, error } = await db.rpc("tg_courier", { p_chat: chat, p_order: id, p_action: act, p_arg: arg || null });
+  const { data: r, error } = await db.rpc("tg_courier_by", { p_chat: chat, p_user: q.from?.id ?? 0, p_order: id, p_action: act, p_arg: arg || null });
+  if (r?.error === "who") return askWho(cfg, q);
   if (error) { console.error(error); return answer("Не получилось: " + error.message, true); }
   const o = await loadOrder(id);
 
