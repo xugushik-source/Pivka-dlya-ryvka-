@@ -853,7 +853,7 @@ function debtsText(list: any[]) {
 // «🤝 Рефералы»: points on the customers' hands (our future discount) and the best inviters — for a surprise gift.
 function referralsText(r: any) {
   const top = (r.top || []) as any[], f = r.funnel || {};
-  const row = (x: any = {}) => `👀 окно открыли ${Number(x.opened || 0)} → 🔗 взяли ссылку ${Number(x.links || 0)} → 📤 поделились ${Number(x.shared || 0)} → 👆 перешли по ссылкам ${Number(x.visits || 0)} → 🙋 друзей привязано ${Number(x.friends || 0)} → 🛒 друзей купили ${Number(x.bought || 0)}`;
+  const row = (x: any = {}) => `👀 открыли окно (чел.) ${Number(x.opened || 0)} → 🔗 взяли ссылку ${Number(x.links || 0)} → 📤 поделились ${Number(x.shared || 0)} → 👆 перешли по ссылкам ${Number(x.visits || 0)} → 🙋 друзей привязано ${Number(x.friends || 0)} → 🛒 друзей купили ${Number(x.bought || 0)}`;
   const who = top.map((x, i) => {
     const friends = ((x.list || []) as any[]).slice(0, 8)
       .map((y) => `   • ${esc(y.name || "Без имени")} ${esc(y.phone || "")} ${y.bought ? "✅ купил" : "⏳ ещё не купил"}`);
@@ -864,6 +864,7 @@ function referralsText(r: any) {
   const head = [
     "🤝 <b>Рефералы</b>",
     "",
+    "<i>Считаем людей, а не нажатия: один телефон или одно устройство = 1, сколько бы раз ни открывал.</i>", "",
     "<b>За 7 дней:</b>", row(f["7d"]),
     "",
     "<b>Всего:</b>", row(f.all),
