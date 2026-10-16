@@ -852,17 +852,30 @@ function debtsText(list: any[]) {
 
 // «🤝 Рефералы»: points on the customers' hands (our future discount) and the best inviters — for a surprise gift.
 function referralsText(r: any) {
-  const top = (r.top || []) as any[];
-  return [
+  const top = (r.top || []) as any[], f = r.funnel || {};
+  const row = (x: any = {}) => `👀 окно открыли ${Number(x.opened || 0)} → 🔗 взяли ссылку ${Number(x.links || 0)} → 📤 поделились ${Number(x.shared || 0)} → 👆 перешли по ссылкам ${Number(x.visits || 0)} → 🙋 друзей привязано ${Number(x.friends || 0)} → 🛒 друзей купили ${Number(x.bought || 0)}`;
+  const who = top.map((x, i) => {
+    const friends = ((x.list || []) as any[]).slice(0, 8)
+      .map((y) => `   • ${esc(y.name || "Без имени")} ${esc(y.phone || "")} ${y.bought ? "✅ купил" : "⏳ ещё не купил"}`);
+    const more = Number(x.friends) > 8 ? [`   … и ещё ${Number(x.friends) - 8}`] : [];
+    return [`${i < 3 ? ["🥇", "🥈", "🥉"][i] : `${i + 1}.`} <b>${esc(x.name || "Без имени")}</b> ${esc(x.phone || "")} · поделился ${Number(x.shares)} · переходов ${Number(x.visits)} · друзей ${Number(x.friends)} · заработал ${money(x.earned)} · на счету ${money(x.balance)}`,
+      ...friends, ...more].join("\n");
+  });
+  const head = [
     "🤝 <b>Рефералы</b>",
     "",
+    "<b>За 7 дней:</b>", row(f["7d"]),
+    "",
+    "<b>Всего:</b>", row(f.all),
+    "",
     `💎 Баллов на руках: <b>${money(r.points)}</b> у ${Number(r.holders)} чел. — это будущие скидки (до 10% заказа)`,
-    `🔗 Ссылок выдано: ${Number(r.links)} · пришло друзей: ${Number(r.friends)}`,
     `➕ Начислено за друзей: ${money(r.rewarded)} · ➖ потрачено баллами: ${money(r.spent)}`,
     "",
-    top.length ? "<b>Кто сколько привёл</b> (пришли / уже купили · заработал · на счету):" : "Пока никто никого не привёл.",
-    ...top.map((x, i) => `${i < 3 ? ["🥇", "🥈", "🥉"][i] : `${i + 1}.`} ${esc(x.name || "Без имени")} · ${esc(x.phone || "")} — ${Number(x.friends)} / ${Number(x.bought)} · ${money(x.earned)} · ${money(x.balance)}`),
+    who.length ? "<b>Кто кого пригласил</b>:" : "Пока никто не взял ссылку.",
   ].join("\n");
+  let text = head; // Telegram: 4096 characters per message, whole blocks only (no cut HTML tags)
+  for (const w of who) { if (text.length + w.length > 3900) break; text += "\n" + w; }
+  return text;
 }
 
 // Owner's private chat: menu buttons and the numbers they ask for. Returns true when handled.

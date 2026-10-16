@@ -336,8 +336,13 @@ const SHARE_TEXT = '🔥 Пивка для рывка — шашлык с ман
 let REF = '';
 try {
   const q = (new URLSearchParams(location.search).get('ref') || '').toUpperCase();
-  if (REF_RE.test(q)) localStorage.setItem('pivka_ref', q);
-  REF = localStorage.getItem('pivka_ref') || ''
+  if (REF_RE.test(q)) {
+    localStorage.setItem('pivka_ref', q);
+    // one «came by a friend's link» per tab, for the owner's referral funnel
+    if (sessionStorage.getItem('pivka_ref_seen') !== q) { sessionStorage.setItem('pivka_ref_seen', q); setTimeout(() => track('ref_visit', { metadata: { code: q } }), 0) }
+  }
+  REF = localStorage.getItem('pivka_ref') || '';
+  if (!REF_RE.test(REF)) REF = ''
 } catch (e) {}
 let BONUS = { balance: 0, pct: 10, use: true };
 // Demo mode for recording promo videos (?demo=ryvok, kept for the tab): 50 points on any phone, and «Подтвердить
@@ -426,7 +431,7 @@ async function getRefLink() {
       '<input readonly value="' + esc(link) + '" onclick="this.select()">' +
       '<button type="button" class="yellow checkout" onclick="shareRef(\'' + esc(link) + '\')">' + esc(tr('Отправить ссылку другу')) + '</button></div>';
     refGo.hidden = true;
-    track('ref_link', { metadata: { friends: Number(d.friends) || 0 } })
+    track('ref_link', { metadata: { code: d.code, friends: Number(d.friends) || 0 } })
   } catch (e) {
     refError.textContent = e.message || tr('Не получилось. Попробуй ещё раз.')
   }
@@ -435,7 +440,9 @@ async function getRefLink() {
 async function shareRef(link) {
   // Points are a discount, not money: the friend's text says «бонусные баллы», never «деньги».
   const text = tr(SHARE_TEXT).replace('{link}', link);
-  try { if (navigator.share) return await navigator.share({ text }) } catch (e) { return }
+  const code = (link.match(/[?&]ref=([A-Z0-9]+)/) || [])[1] || '';
+  try { if (navigator.share) { await navigator.share({ text }); track('ref_share', { metadata: { code, via: 'share' } }); return } } catch (e) { return }
+  track('ref_share', { metadata: { code, via: 'copy' } });
   try { await navigator.clipboard.writeText(link); alert(tr('Ссылка скопирована')) } catch (e) { prompt('', link) }
 }
 const TRACK_KEEP_MS = 60e3; // a cancelled order's card disappears after a minute (owner, 2026-10-12)
@@ -1848,10 +1855,10 @@ const CATCH_TEXT = {
 function catchFriendUrl() {
   let ref = '';
   try {
-    ref = localStorage.getItem('pivka_ref') || '';
+    ref = localStorage.getItem('pivka_share_id') || '';
     if (!ref) {
       ref = Math.random().toString(36).slice(2, 8);
-      localStorage.setItem('pivka_ref', ref)
+      localStorage.setItem('pivka_share_id', ref)
     }
   } catch (e) {}
   const c = campaignInfo()?.last || {};
