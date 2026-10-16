@@ -58,7 +58,7 @@ async function loadOrder(orderId: string) {
   const { data: o, error } = await db.from("orders")
     .select("id,order_number,status,fulfillment_type,address_snapshot,payment_method,discount_total,delivery_fee,total,comment," +
       "created_at,confirmed_at,ready_at,delivered_at,cancellation_reason,city_id,from_stock,scheduled_for,bonus_used," +
-      "customers(full_name,phone),service_cities(name),delivery_zones(name)," +
+      "customers!orders_customer_id_fkey(full_name,phone),service_cities(name),delivery_zones(name)," +
       "order_items(name_snapshot,quantity,unit_snapshot,unit_price_snapshot,line_total,is_gift,supplier_id,supplier_cost_snapshot,products(prep_minutes,prep_batch))," +
       "delivery_assignments(driver_id,drivers(name)),order_collections(method,created_at)," +
       "supplier_order_groups(supplier_id,status,ready_at,missing_note,suppliers(name))")
