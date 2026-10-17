@@ -9,7 +9,7 @@ Build a mobile-first local commerce and operations system, not merely a catalog.
 1. Gift tiers are prominent and configurable. Only the highest unlocked tier applies; tiers do not stack. Gift stock comes from the same SKU inventory.
 2. “Угостить друга”: sender chooses goods/bundle and prepays; recipient receives a link and confirms delivery details.
 3. “Спорим на пиво?”: create bet → choose stake → opponent accepts → loser confirms loss and prepays → winner confirms address → one paid delivery to winner.
-4. PASS: working placeholder 3 GEL/month, but price, minimum basket and delivery conditions are admin-configurable.
+4. (removed: subscription delivery — no longer offered)
 5. Ready “Рывки” are real bundle entities with components, quantities, cost, price, customer value and inventory dependency.
 6. Bundle promotion engine must support special component price, fixed/percentage discount, extra quantity (“6 instead of 4”), and +1/bonus.
 7. Individual products trigger contextual upsell category flows. Bundle contents must suppress redundant upsells.
@@ -38,15 +38,15 @@ Start transparent, not black-box AI: current stock + recent demand + same weekda
 
 ## Analytics / AI-ready
 Calculations are deterministic in backend. AI later interprets verified aggregates.
-Capture events including product view/add/remove, upsell open/category/add, bundle view/add, gift progress/unlock/select, PASS offer/purchase, bet created/accepted, friend gift created, checkout, payment, delivery, cancellation and repeat order.
+Capture events including product view/add/remove, upsell open/category/add, bundle view/add, gift progress/unlock/select, bet created/accepted, friend gift created, checkout, payment, delivery, cancellation and repeat order.
 Prepare metrics for revenue, gross profit, AOV, repeat rate, SKU/bundle profitability, upsell attach rate, gift-tier effect, hourly/weekday sales, stock/write-offs/cancellations and driver payables.
 
 ## Admin
-Owner-facing sections: Today, Orders, Catalog, Inventory, Рывки, Promotions, Gifts, Upsells, Customers, PASS, Bets, Treat a Friend, Delivery, Drivers, Purchases, Expenses, Finance, Analytics, Settings.
+Owner-facing sections: Today, Orders, Catalog, Inventory, Рывки, Promotions, Gifts, Upsells, Customers, Bets, Treat a Friend, Delivery, Drivers, Purchases, Expenses, Finance, Analytics, Settings.
 Normal commercial changes must not require code edits.
 
 ## UX rules
-Mobile first. Selling mechanics are large and visible before the ordinary catalog. Do not hide gift progress, bet, friend gift or PASS in the footer.
+Mobile first. Selling mechanics are large and visible before the ordinary catalog. Do not hide gift progress, bet or friend gift in the footer.
 Show bundle value honestly: separate-item total vs bundle price/value, or extra quantity. No fake scarcity or fake crossed-out pricing.
 
 ## Security

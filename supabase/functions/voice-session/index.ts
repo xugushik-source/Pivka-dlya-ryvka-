@@ -1,7 +1,7 @@
 // Voice seller: issues a short-lived OpenAI Realtime client secret for the storefront.
 // The permanent OPENAI_API_KEY lives only in Supabase Secrets; the browser gets an ephemeral `ek_…` key that
 // expires in ~1 minute if unused, and a session that the browser closes after VOICE_MAX_SECONDS.
-// Everything commercial (catalog, prices, bundles, gifts, delivery, PASS) is answered by tools that run in the
+// Everything commercial (catalog, prices, bundles, gifts, delivery) is answered by tools that run in the
 // browser on top of the existing store logic — the model never sees a price it did not get from a tool.
 //
 // Guards (no new tables: counted in the existing public.store_events):
@@ -52,7 +52,7 @@ function instructions(lang: string) {
 Если не расслышала — переспроси ОДИН раз и коротко, с догадкой: «Четверо, да?», «Сто лари?». Не говори «не поняла, повтори». Если и потом неясно — предложи самый ходовой вариант.
 Говори естественно, как живая приветливая официантка, а не как персонаж. Без панибратства: никаких «брат», «бро», «ძმაო», «ախպեր» и прочих прозвищ. Обращайся на «ты» без обращений или по имени, если клиент его назвал. Не повторяй одни и те же слова и шутки; шути редко и к месту.
 
-ГЛАВНОЕ ПРАВИЛО: товары, цены, наличие, часы, подарки, доставку, PASS и состав рывков ты знаешь ТОЛЬКО из инструментов.
+ГЛАВНОЕ ПРАВИЛО: товары, цены, наличие, часы, подарки, доставку и состав рывков ты знаешь ТОЛЬКО из инструментов.
 Никогда не называй цену или сумму, которую не вернул инструмент. Ничего не придумывай. Если товара нет в каталоге — значит сейчас его не продаём (ночью продаём только то, что лежит на складе).
 Суммы называй из поля total/price результата инструмента.
 
@@ -90,7 +90,7 @@ const obj = (properties: Record<string, unknown>, required: string[] = []) => ({
 const str = (description: string) => ({ type: "string", description });
 const num = (description: string) => ({ type: "number", description });
 const TOOLS = [
-  ["get_store_context", "Город, язык, время (ночные цены), правила доставки и PASS, разделы каталога.", obj({})],
+  ["get_store_context", "Город, язык, время (ночные цены), правила доставки, разделы каталога.", obj({})],
   ["get_catalog", "Товары магазина с реальными ценами. Фильтры необязательны.", obj({ category: str("slug раздела: draft, strong, vodka, brandy, whisky, wine, fish, meat-snacks, cheese, nuts, chips, snacks, salty, seafood, frozen, soft-drinks, energy, supplies"), query: str("часть названия") })],
   ["get_product", "Один товар по id.", obj({ product_id: str("id товара") }, ["product_id"])],
   ["get_available_bundles", "Готовые рывки: состав, цена, на сколько человек.", obj({})],
@@ -113,7 +113,6 @@ const TOOLS = [
   ["clear_cart", "Очистить корзину (только по явной просьбе).", obj({})],
   ["get_delivery_quote", "Стоимость доставки для суммы и текущего времени.", obj({ subtotal: num("сумма товаров") })],
   ["get_gift_progress", "Сколько осталось до подарка и какой подарок.", obj({})],
-  ["get_pass_status_or_offer", "Условия PASS (и действует ли он у клиента, если известен телефон).", obj({})],
   ["prepare_checkout", "Открыть обычное оформление заказа. Заказ подтверждает сам клиент.", obj({})],
   ["end_conversation", "Закончить разговор после короткой прощальной фразы (не по делу второй раз, или клиент закончил).", obj({ reason: { type: "string", enum: ["off_topic", "done"] } }, ["reason"])],
 ].map(([name, description, parameters]) => ({ type: "function", name, description, parameters }));
@@ -223,7 +222,7 @@ Deno.serve(async (req) => {
         max_output_tokens: 1500, // audio tokens count too: 250 cut the seller off mid-sentence on any longer answer
         audio: {
           input: {
-            transcription: { model: CONFIG.transcribeModel, prompt: "Пивка для рывка, Ахалкалаки, лари, рывок, разливное пиво, литр, шашлык, пицца, Сиг, PASS, доставка" },
+            transcription: { model: CONFIG.transcribeModel, prompt: "Пивка для рывка, Ахалкалаки, лари, рывок, разливное пиво, литр, шашлык, пицца, Сиг, доставка" },
             noise_reduction: { type: "near_field" },
             // The customer finishes the phrase: an answer starts only after 0.9 s of silence (semantic VAD answered
             // into short mid-sentence pauses and the customer had to talk over her).

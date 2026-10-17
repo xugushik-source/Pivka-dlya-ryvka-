@@ -572,28 +572,6 @@ document.addEventListener('visibilitychange', () => {
 // Back from the game page (browser back keeps the old page in memory): re-check, so a finished game closes the card.
 window.addEventListener('pageshow', (e) => { if (e.persisted && trackSaved()) refreshTrack() });
 
-let passPlan = 'DAY';
-function openPass() {
-  passOverlay.classList.add('on')
-}
-function pickPassPlan(el) {
-  passPlan = el.dataset.plan;
-  document.querySelectorAll('.passPlan').forEach(b => b.classList.toggle('on', b === el));
-  passGo.textContent = 'Оформить PASS за ' + (passPlan === 'NIGHT' ? 40 : 20) + ' ₾ →'
-}
-async function activatePass() {
-  if (passPhone.value.trim().length < 6) {
-    alert('Укажи телефон');
-    return
-  }
-  try {
-    const r = await PIVKA_DB.startPass(passName.value.trim(), passPhone.value.trim(), passPlan);
-    passBody.innerHTML = '<div class="success"><div class="big">👑</div><h2>PASS подготовлен</h2><p class="muted">' + (r.plan === 'NIGHT' ? 'Ночной PASS — 40 ₾ / месяц.' : 'Дневной PASS — 20 ₾ / месяц.') + ' Оплатите переводом — после оплаты мы включим PASS на 30 дней.</p>' + [...paymentLinks.querySelectorAll('a')].map(x => x.outerHTML).join('') + '</div>'
-  } catch (e) {
-    alert(e.message)
-  }
-}
-
 function openSocial(type) {
   socialType = type;
   socialTitle.textContent = type === 'TREAT' ? '🍻 Угостить друга' : '🏆 Спорим на пиво?';
@@ -1347,7 +1325,7 @@ function setFulfillment(v) {
   refreshDeliveryQuote()
 }
 
-// Delivery fee comes from the server rule (zone, owner switch, PASS 12:00–22:00); the zone fee is only a fallback.
+// Delivery fee comes from the server rule (zone, owner switch, day/night); the zone fee is only a fallback.
 let deliveryQuoteState = { fee: null, reason: null, mode: 'CHARGE' }, quoteSeq = 0;
 // After a successful order the form is replaced by the confirmation screen.
 const checkoutFormAlive = () => !!document.getElementById('coZone');
@@ -1396,7 +1374,7 @@ function updateCheckoutTotal() {
   renderRuCard();
   checkoutNotice.style.display = fulfillment === 'delivery' ? 'block' : 'none';
   const min = opt?.dataset?.min && Number(opt.dataset.min) ? ' · Минимальный заказ ' + money(opt.dataset.min) : '';
-  const feeText = deliveryQuoteState.reason === 'FREE_FROM' ? 'Доставка бесплатно — заказ от ' + deliveryRule().free + ' ₾' : deliveryQuoteState.reason === 'ZONE' && fee > 0 ? 'Доставка: ' + money(fee) + ' · от ' + deliveryRule().free + ' ₾ — бесплатно' : deliveryQuoteState.reason === 'PASS_SMALL' ? 'Доставка: ' + money(fee) + ' · с PASS от 30 ₾ — бесплатно' : deliveryQuoteState.reason === 'PASS' ? 'Доставка: 0 ₾ — PASS' : mode === 'HIDDEN' ? '' : mode === 'FREE' ? 'Доставка бесплатно' : 'Доставка: ' + money(fee);
+  const feeText = deliveryQuoteState.reason === 'FREE_FROM' ? 'Доставка бесплатно — заказ от ' + deliveryRule().free + ' ₾' : deliveryQuoteState.reason === 'ZONE' && fee > 0 ? 'Доставка: ' + money(fee) + ' · от ' + deliveryRule().free + ' ₾ — бесплатно' : mode === 'HIDDEN' ? '' : mode === 'FREE' ? 'Доставка бесплатно' : 'Доставка: ' + money(fee);
   checkoutNotice.textContent = fulfillment === 'delivery' ? (coZone.value ? (feeText + min).replace(/^ · /, '') || 'Доставка' : 'Выбери зону доставки') : 'Самовывоз — без платы за доставку'
 }
 
@@ -1688,7 +1666,7 @@ const I18N = {
     catalog: 'Каталог',
     city: '📍 Город доставки',
     trust: ['⚡ Быстрый заказ', '💵 Наличные / перевод', '🔞 Только 18+'],
-    actions: ['Угостить друга', 'Спорим на пиво?', 'Пивка PASS'],
+    actions: ['Угостить друга', 'Спорим на пиво?'],
     cats: ['Пиво', 'Крепкий алкоголь', 'Вино', 'Рыба', 'Снеки', 'Мясные закуски', 'Шоколад', 'Сыр', 'Орехи', 'Напитки', 'Энергетики'],
     notfound: 'Не нашли товар?',
     tell: 'Сообщить',
@@ -1717,7 +1695,7 @@ const I18N = {
     catalog: 'კატალოგი',
     city: '📍 მიწოდების ქალაქი',
     trust: ['⚡ სწრაფი შეკვეთა', '💵 ნაღდი / გადარიცხვა', '🔞 მხოლოდ 18+'],
-    actions: ['გაუმასპინძლდი მეგობარს', 'დადე ფსონი ლუდზე', 'ლუდის PASS'],
+    actions: ['გაუმასპინძლდი მეგობარს', 'დადე ფსონი ლუდზე'],
     cats: ['ლუდი', 'ძლიერი ალკოჰოლი', 'ღვინო', 'თევზი', 'სნექები', 'ხორცის მისაყოლებელი', 'შოკოლადი', 'ყველი', 'თხილეული', 'სასმელები', 'ენერგეტიკული'],
     notfound: 'ვერ იპოვე პროდუქტი?',
     tell: 'შეგვატყობინე',
@@ -1746,7 +1724,7 @@ const I18N = {
     catalog: 'Կատալոգ',
     city: '📍 Առաքման քաղաք',
     trust: ['⚡ Արագ պատվեր', '💵 Կանխիկ / փոխանցում', '🔞 Միայն 18+'],
-    actions: ['Հյուրասիրել ընկերոջը', 'Գրազ գարեջրի վրա', 'Գարեջրի PASS'],
+    actions: ['Հյուրասիրել ընկերոջը', 'Գրազ գարեջրի վրա'],
     cats: ['Գարեջուր', 'Թունդ ալկոհոլ', 'Գինի', 'Ձուկ', 'Խորտիկներ', 'Մսային խորտիկներ', 'Շոկոլադ', 'Պանիր', 'Ընկույզներ', 'Ըմպելիքներ', 'Էներգետիկ'],
     notfound: 'Չգտա՞ք ապրանքը',
     tell: 'Հայտնել',
