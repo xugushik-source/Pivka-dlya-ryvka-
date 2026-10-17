@@ -30,7 +30,7 @@ h1{font-size:26px;margin:0 0 2px}.muted{color:#a9afb3;font-size:13px}
 <div class="muted" id="sub">Загрузка…</div>
 <div id="box"></div>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="./config.js"></script><script src="./js/track.js?v=20261007b"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="./config.js"></script><script src="./js/track.js?v=20261017a"></script>
 <script>
 // The order's own page: the link is on the success screen and in the order card on the home page, so the order can
 // always be found again — from any browser, even after the phone forgot the site. Access = the random order id.
@@ -97,6 +97,7 @@ function render(o, v) {
     if (o.fulfillment === 'delivery') lines.push('<div class="line"><span>Доставка</span><b>' + money(v.delivery_fee) + '</b></div>');
     h += '<div class="card"><h2>Что заказано</h2>' + lines.join('') + '<div class="sum"><span>Итого</span><span>' + money(v.total) + '</span></div></div>';
   }
+  h += waButton(o, v);
   if (o.status === 'NEW') h += '<a class="btn yellow" href="./edit.html?o=' + encodeURIComponent(ORDER) + '">✏️ Изменить заказ</a>';
   // Nobody has confirmed the order yet — the customer can still cancel it. After «Принят» — only by writing to us in the chat.
   if (o.status === 'NEW') h += '<button class="btn ghost" id="cancelOrder" type="button" style="width:100%;background:none;cursor:pointer">❌ Отменить заказ</button>';
@@ -115,6 +116,28 @@ function render(o, v) {
     if (left > 0) tick = setTimeout(() => render(o, v), left + 300);
   }
 }
+// WhatsApp copy of the order (wa.me with the text ready, no API): the full text saved at checkout on this phone,
+// otherwise built from the order itself. PIVKA_CONFIG.whatsapp = our number; without it WhatsApp asks whom to send to.
+function waButton(o, v) {
+  if (o.status === 'CANCELLED' || o.status === 'REFUNDED') return '';
+  let text = '';
+  try { text = localStorage.getItem('pivka_wa_' + ORDER) || '' } catch (e) {}
+  if (!text && v) {
+    const L = [T('✅ Пивка для рывка — заказ №') + o.order_number];
+    if (v.bundle) L.push('• 🍻 ' + v.bundle.items.map(i => i.name + ' × ' + unit(i.qty, i.unit)).join(', '));
+    v.items.forEach(i => L.push('• ' + i.name + ' × ' + unit(i.qty, i.unit)));
+    L.push('');
+    if (o.fulfillment === 'delivery') L.push(T('Доставка') + ': ' + money(v.delivery_fee));
+    else L.push('📍 ' + T('Самовывоз'));
+    L.push(T('Итого') + ': ' + money(v.total));
+    L.push('🕐 ' + new Date(o.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Tbilisi', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }));
+    L.push('', T('Статус заказа') + ': ' + location.href.split('#')[0]);
+    text = L.join('\n');
+  }
+  if (!text) return '';
+  const num = String(PIVKA_CONFIG.whatsapp || '').replace(/\D/g, '');
+  return '<a class="btn wa" target="_blank" rel="noopener" href="' + esc('https://wa.me/' + num + '?text=' + encodeURIComponent(text)) + '">📲 Подтверждение в WhatsApp</a>';
+}
 async function cancelOrder() {
   const t = (x) => window.PIVKA_I18N ? PIVKA_I18N.translate(x, PIVKA_I18N.language) : x;
   if (!confirm(t('Отменить заказ? Курьер и магазин сразу увидят отмену.'))) return;
@@ -130,7 +153,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 window.setLang = l => { document.documentElement.lang = l };
 load();
 </script>
-<script src="./js/i18n.js?v=20261015b"></script><script src="./js/chat.js?v=20261013b"></script>
+<script src="./js/i18n.js?v=20261017a"></script><script src="./js/chat.js?v=20261013b"></script>
 <script>
 (() => { let l = 'ru'; try { l = localStorage.getItem('pivka_lang') || (navigator.language || '').slice(0, 2) } catch (e) {} setLang(['ru', 'ka', 'hy'].includes(l) ? l : 'ru') })();
 </script>
