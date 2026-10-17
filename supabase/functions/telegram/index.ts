@@ -1010,6 +1010,16 @@ async function onOwnerVideo(cfg: Cfg, url: string, caption: string) {
   return sent;
 }
 
+// A customer rated a delivered order on the order page.
+async function onOrderRated(cfg: Cfg, orderId: string) {
+  const { data: r } = await db.from("order_ratings").select("rating,comment").eq("order_id", orderId).maybeSingle();
+  if (!r) return 0;
+  const o = await loadOrder(orderId);
+  const text = `${"⭐".repeat(Number(r.rating))}${"☆".repeat(5 - Number(r.rating))} <b>Оценка заказа №${o.order_number}</b>` +
+    (o.customers?.full_name ? ` · ${esc(o.customers.full_name)}` : "") + (r.comment ? `\n💬 ${esc(r.comment)}` : "");
+  return await sendToKind(cfg, "OWNER", text);
+}
+
 async function onStockMorning(cfg: Cfg) {
   const r = await owner(null as any, "morning");
   const sold = (r.sold || []) as any[], stock = (r.stock || []) as any[], paid = r.paid || {};
@@ -1410,6 +1420,7 @@ Deno.serve(async (req) => {
       if (b.action === "support_in") return out({ sent: await onSupportIn(cfg, Number(b.message_id)) });
       if (b.action === "stock_morning") return out({ sent: await onStockMorning(cfg) });
       if (b.action === "owner_video") return out({ sent: await onOwnerVideo(cfg, String(b.url || ""), String(b.caption || "")) });
+      if (b.action === "order_rated") return out({ sent: await onOrderRated(cfg, b.order_id) });
       if (b.action === "courier_morning") return out({ sent: await onCourierMorning(cfg) });
       if (b.action === "courier_remind") return out({ sent: await onCourierMorning(cfg, true) });
       if (b.action === "preorder_morning") return out({ sent: await onPreorderMorning(cfg) });
