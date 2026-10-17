@@ -51,7 +51,11 @@ const hm2min = t => { const [h, m] = String(t).split(':'); return +h * 60 + +m }
 // Pre-order: the customer picks a delivery time (Tbilisi). The storefront then shows what is sold at that time, with
 // that time's night prices and delivery fee; the server (create_*_preorder) checks the same as of that moment.
 let PRE = null;
-const atDate = () => PRE || new Date();
+// Hours are counted by the server's clock (Asia/Tbilisi), not the phone's: SKEW = server now − phone now (public.server_now).
+let SKEW = 0;
+const nowMs = () => Date.now() + SKEW;
+const atDate = () => PRE || new Date(nowMs());
+(async () => { try { const t0 = Date.now(), r = await PIVKA_DB.client().rpc('server_now'); if (!r.error && r.data) SKEW = Date.parse(r.data) - (t0 + Date.now()) / 2 } catch (e) {} })();
 function tbilisiMin() {
   try { return hm2min(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Tbilisi', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(atDate())) } catch (e) { const d = atDate(); return d.getHours() * 60 + d.getMinutes() }
 }
@@ -86,7 +90,7 @@ function renderPreBar() {
   const el = document.getElementById('preBar');
   if (!el) return;
   const closed = catalogAll.some(p => { const h = HOURS[p.id]; return h && h[0] && h[1] && !openNow(p) });
-  el.hidden = !PRE && !closed && !paused(Date.now());
+  el.hidden = !PRE && !closed && !paused(nowMs());
   if (!el.hidden) el.innerHTML = '<label>🕐 ' + esc(tr(PRE ? 'Предзаказ — привезём к' : 'Предзаказ: выбери время — покажем всё, что будет в продаже')) +
     '<select onchange="setPre(this.value)">' + preOptions() + '</select></label>';
   if (typeof coWhen !== 'undefined' && coWhen) coWhen.innerHTML = preOptions()
@@ -122,6 +126,23 @@ function openNow(p) {
   const m = tbilisiMin(), f = hm2min(h[0]), u = hm2min(h[1]);
   return f <= u ? m >= f && m < u : m >= f || m < u
 }
+// Closed by its own selling hours (the supplier's hours: products.sell_from / sell_until), not by stock.
+function closedByHours(p) {
+  const h = HOURS[p.id];
+  if (!h || !h[0] || !h[1]) return false;
+  const m = tbilisiMin(), f = hm2min(h[0]), u = hm2min(h[1]);
+  return !(f <= u ? m >= f && m < u : m >= f || m < u)
+}
+// «Откроется в ЧЧ:ММ»: the supplier's opening time, but not before the shop opens (STORE_OPEN, store_settings.pause.daily.to).
+const STORE_OPEN = '10:00';
+function opensAt(p) {
+  const f = String((HOURS[p.id] || [])[0] || STORE_OPEN).slice(0, 5);
+  return hm2min(f) < hm2min(STORE_OPEN) ? STORE_OPEN : f
+}
+// The shop is closed now (02:00–10:00) and no pre-order time is chosen: the cart can be filled, the order waits.
+const shopClosed = () => !PRE && typeof paused === 'function' && paused(nowMs());
+// Lines in the cart that are not sold now (their supplier closed while the cart was waiting).
+const closedInCart = () => Object.values(cart).filter(x => !openNow(x.p));
 function setCatalog(list) {
   catalogAll = list;
   catalog = list.filter(openNow);
@@ -135,7 +156,7 @@ function renderHoursNote() {
   if (!el) return;
   const closed = slug => catalogAll.some(p => slugOf(p) === slug && !openNow(p));
   const beer = closed('draft'), food = closed('pizza');
-  const text = beer && food ? (stockNight() ? '🌙 Ночью (23:00–10:00) — крепкое и закуска к нему. Магазин — с 10:00, пиво, пицца и хачапури — с 12:00.'
+  const text = beer && food ? (stockNight() ? '🌙 С 23:00 до 02:00 — крепкое и закуска к нему. Магазин — с 10:00, пиво, пицца и хачапури — с 12:00.'
       : '☀️ Пиво, пицца, хачапури и ламаджо — с 12:00. Остальное уже везём.')
     : food ? '🍕 Пицца, хачапури и ламаджо — с 12:00. Пиво уже наливаем.' : '';
   el.hidden = !text || !!PRE;
@@ -836,11 +857,11 @@ function totals() {
 }
 
 // ---------- Night prices and day/night delivery — the same rule the server applies to the order (public.night_pricing):
-// 00:00–08:00 Tbilisi every product and Рывок +10 %, rounded up to 0.50 ₾. Day prices are kept in p._day / b._day.
+// 00:00–02:00 (closing) Tbilisi every product and Рывок +10 %, rounded up to 0.50 ₾. Day prices are kept in p._day / b._day.
 let NIGHT = null, nightShown = null;
 const tbilisiHM = () => atDate().toLocaleTimeString('en-GB', { timeZone: 'Asia/Tbilisi', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 const inWin = (t, a, b) => a <= b ? t >= a && t < b : t >= a || t < b;
-const nightOn = () => !!NIGHT && Number(NIGHT.percent) > 0 && inWin(tbilisiHM(), NIGHT.from || '00:00', NIGHT.to || '08:00');
+const nightOn = () => !!NIGHT && Number(NIGHT.percent) > 0 && inWin(tbilisiHM(), NIGHT.from || '00:00', NIGHT.to || '02:00');
 function nightPrice(x) {
   const st = Number(NIGHT.step || 0.5);
   return Math.ceil(Math.round(x * (1 + Number(NIGHT.percent) / 100) / st * 1e6) / 1e6) * st
@@ -859,9 +880,9 @@ function applyNight() {
   });
   document.querySelectorAll('.nightNote').forEach(x => x.hidden = !on)
 }
-// Delivery rule for «now»: day 4 ₾ / free from 50 ₾, after 23:00 7 ₾ / free from 80 ₾ (numbers come from the server).
+// Delivery rule for «now»: day 3 ₾ / free from 50 ₾, after 23:00 5 ₾ / free from 80 ₾ (numbers come from the server).
 function deliveryRule() {
-  const d = NIGHT?.delivery || {}, n = inWin(tbilisiHM(), d.night_from || '23:00', d.night_to || '08:00');
+  const d = NIGHT?.delivery || {}, n = inWin(tbilisiHM(), d.night_from || '23:00', d.night_to || '02:00');
   return { fee: Number(n ? d.night_fee ?? 7 : d.day_fee ?? 3), free: Number(n ? d.night_free_from ?? 80 : d.day_free_from ?? 50) }
 }
 async function loadNight() {
@@ -881,7 +902,7 @@ function renderAllPrices() {
   renderCart();
   if (checkoutFormAlive()) updateCheckoutTotal()
 }
-// The page may stay open across 00:00 / 08:00: switch prices on time.
+// The page may stay open across 00:00 / 02:00: switch prices on time.
 setInterval(() => { if (NIGHT && nightOn() !== nightShown) renderAllPrices() }, 30e3);
 // The gift is earned on day prices (the server checks it before the night markup).
 function giftTotals() {
@@ -904,6 +925,8 @@ function renderCart() {
   const bundleCount = checkoutBundle ? 1 : 0;
   cartCount.textContent = (count || bundleCount) ? '🛒 ' + (count + bundleCount) + ' поз.' : '🛒 Корзина пуста';
   cartTotal.textContent = money(total) + ' →';
+  const go = document.getElementById('cartGo');
+  if (go) { go.textContent = shopClosed() ? tr('Сейчас закрыто — откроемся в 10:00') : tr('Оформить заказ →'); go.classList.toggle('closedGo', shopClosed()) }
   document.querySelector('.cart').classList.toggle('show', count > 0 || bundleCount > 0);
   // A Рывок has its own discount and does not count toward the gift — only extra products do.
   renderGift(giftTotals());
@@ -1394,6 +1417,17 @@ function openCheckout(bundle = null) {
     cartHint.textContent = 'Добавь товар из каталога для оформления';
     return
   }
+  const shut = closedInCart();
+  if (shut.length) {
+    cartHint.textContent = tr('Сейчас не продаётся: {list}. Уберите эти позиции или выберите время предзаказа.').replace('{list}', shut.map(x => pname(x.p) + ' (' + tr('откроется в {t}').replace('{t}', opensAt(x.p)) + ')').join(', '));
+    openSheet('cartOverlay');
+    return
+  }
+  if (shopClosed()) {
+    cartHint.textContent = tr('Сейчас закрыто, откроемся в 10:00. Корзина сохранится — или выберите время предзаказа вверху каталога.');
+    openSheet('cartOverlay');
+    return
+  }
   closeSheet('cartOverlay');
   // Zones failed to load earlier (bad network) — try again, otherwise the customer cannot pick one.
   if (coZone.options.length < 2 && currentCity) changeCity(currentCity.id);
@@ -1409,6 +1443,11 @@ function showDemoSuccess(r) {
 
 async function submitCheckout() {
   coError.textContent = '';
+  const shut = closedInCart();
+  if (shut.length && !PRE) {
+    coError.textContent = tr('Сейчас не продаётся: {list}. Уберите эти позиции или выберите время предзаказа.').replace('{list}', shut.map(x => pname(x.p)).join(', '));
+    return
+  }
   if (Object.values(cart).some(x => x.p.unit === 'liter' && (x.qty < 2 || x.qty % 2 !== 0))) {
     coError.textContent = 'Пиво заказывается кратно 2 литрам';
     return
@@ -1503,6 +1542,7 @@ async function submitCheckout() {
     // The same status card as on the home page.
     checkoutBody.querySelector('.success').insertAdjacentHTML('beforeend', '<div id="orderTrack" class="trackCard" hidden></div>');
     if (r.order_id) referralCard(r.order_id).then(h => { const s = checkoutBody.querySelector('.success'); if (h && s) s.insertAdjacentHTML('beforeend', h) });
+    if (window.PivkaPWA) PivkaPWA.offer(checkoutBody.querySelector('.success'));   // «Установить на телефон», ≤ 1 in 14 days
     document.querySelector('#todaySection #orderTrack')?.remove();
     refreshTrack();
     Object.keys(cart).forEach(k => delete cart[k]);
@@ -1564,12 +1604,13 @@ function renderProducts(filter = currentCat) {
   if (upsellReturn) rows = rows.filter(p => !cart[p.id]);
   rows.sort((a, b) => (Number(b.top_pick) - Number(a.top_pick)) || (Number(a.home_rank || 100) - Number(b.home_rank || 100)));
   renderCatHead(filter, rows);
+  const shut = upsellReturn ? [] : catalogAll.filter(p => closedByHours(p) && !rows.includes(p) && (known ? inCat(p, filter) : slugOf(p) === filter));
   products.classList.remove('stagger');
-  products.innerHTML = rows.length ? rows.map((p, n) => {
+  products.innerHTML = rows.length || shut.length ? rows.map((p, n) => {
     const lim = p.unit === 'liter' ? 'Минимум ' + Number(p.minimum_quantity || 2) + ' л · шаг 2 л' : ALCOHOL.includes(slugOf(p)) ? '18+' : '',
       inCart = cart[p.id]?.qty;
     return `<div class="product" style="--i:${Math.min(n,8)}"><div class="thumb">${p.image_url?'<img src="'+esc(p.image_url)+'" alt="'+esc(pname(p))+'" loading="lazy" decoding="async" data-fallback="'+icon(p)+'" onerror="this.parentNode.textContent=this.dataset.fallback">':icon(p)}</div><div class="pinfo"><h3>${esc(pname(p))} ${p.top_pick?'<span class="tag">ТОП</span>':''}</h3>${lim?'<div class="lim">'+lim+'</div>':''}<div class="p">${p.unit==='liter'?money(p.sale_price)+' за 1 л':money(p.sale_price)}</div><div class="stock">${inCart?'В корзине: '+inCart+(p.unit==='liter'?unitL():''):stockLeft(p)!==null?tr('Осталось: {n}').replace('{n}',stockLeft(p)):'В наличии'}</div>${prepLabel(p)}</div><button type="button" class="plus" data-id="${p.id}" aria-label="Добавить">+</button></div>`
-  }).join('') : '<div class="empty">' + (upsellReturn ? 'Всё из этого раздела уже в корзине' : 'В этой категории пока пусто') + '</div>';
+  }).join('') + shut.map(p => `<div class="product sold"><div class="thumb">${p.image_url?'<img src="'+esc(p.image_url)+'" alt="'+esc(pname(p))+'" loading="lazy" decoding="async">':icon(p)}</div><div class="pinfo"><h3>${esc(pname(p))}</h3><div class="p">${p.unit==='liter'?money(p.sale_price)+' за 1 л':money(p.sale_price)}</div><div class="stock">${esc(tr('Откроется в {t}').replace('{t}', opensAt(p)))}</div></div><button type="button" class="plus" disabled aria-label="Закрыто">+</button></div>`).join('') : '<div class="empty">' + (upsellReturn ? 'Всё из этого раздела уже в корзине' : 'В этой категории пока пусто') + '</div>';
   if (!reducedMotion) {
     void products.offsetWidth;
     products.classList.add('stagger')

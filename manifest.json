@@ -1,0 +1,17 @@
+{
+  "name": "Пивка для рывка",
+  "short_name": "Пивка",
+  "description": "Доставка пива, шашлыка, пиццы и закусок",
+  "start_url": "./?src=app",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#080a0b",
+  "theme_color": "#080a0b",
+  "lang": "ru",
+  "icons": [
+    { "src": "assets/pwa/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/pwa/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "assets/pwa/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
