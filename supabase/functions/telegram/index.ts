@@ -1162,8 +1162,12 @@ function rosterText(r: any, title = "🛵 <b>Курьеры на сегодня<
     `Работают: <b>${on}</b> из ${r.list.length}${silent ? ` · не отметились: ${silent}` : ""}`, "",
     ...r.list.map((d: any) => `${esc(d.name || "Курьер")} — ${shiftLine(d.shift)}`)].join("\n");
 }
+// Owner, 17.10: for now couriers may mark or change their shift at any time of the day (they are still learning);
+// later SHIFT_STRICT = true: the mark is final for the day and the emergency exit works once.
+const SHIFT_STRICT = false;
 const pollText = (r: any) => rosterText(r, "☀️ <b>Доброе утро! Кто сегодня работает?</b> Каждый отмечает себя сам") +
-  "\n\n<i>Отметка — на весь день, поменять её нельзя. «🚨 Экстренно ухожу» — только в крайнем случае, 1 раз в день.</i>";
+  (SHIFT_STRICT ? "\n\n<i>Отметка — на весь день, поменять её нельзя. «🚨 Экстренно ухожу» — только в крайнем случае, 1 раз в день.</i>"
+    : "\n\n<i>Отметиться или поменять отметку можно в любое время. Нет этого сообщения под рукой — напишите в группу /smena</i>");
 async function courierChats() {
   return [...new Set((await linksOf("DRIVER")).map((l: any) => Number(l.chat_id)))];
 }
@@ -1249,7 +1253,7 @@ async function onCourierCallback(cfg: Cfg, q: any, act: string, a: string, b: st
 
   if (act === "exit" || act === "exitok") {
     if (!s || s.mode === "OFF") return answer("Вы сегодня не на смене.", true);
-    if (s.left_at) return answer("Экстренный выход сегодня уже был. Больше нельзя — звоните владельцу.", true);
+    if (s.left_at && SHIFT_STRICT) return answer("Экстренный выход сегодня уже был. Больше нельзя — звоните владельцу.", true);
     if (act === "exit") {
       await quiet(tg(cfg, "sendMessage", { chat_id: chat, parse_mode: "HTML",
         text: `⚠️ <b>${esc(d.name)}, это экстренная кнопка.</b>\nМожно только 1 раз в день и только если правда случилось что-то серьёзное. После неё смена на сегодня закончена — вернуться уже нельзя, владелец сразу получит сообщение.\nЕсли просто хочется уйти пораньше — договаривайтесь с владельцем заранее, а не кнопкой.`,
@@ -1268,7 +1272,7 @@ async function onCourierCallback(cfg: Cfg, q: any, act: string, a: string, b: st
     await quiet(tg(cfg, "deleteMessage", { chat_id: chat, message_id: msg }));
     return answer("Хорошо, работаем 💪");
   }
-  if (s) return answer(`Вы уже отметились: ${shiftLine(s)}. Поменять нельзя — если срочно, «🚨 Экстренно ухожу» (1 раз в день) или звоните владельцу.`, true);
+  if (s && SHIFT_STRICT) return answer(`Вы уже отметились: ${shiftLine(s)}. Поменять нельзя — если срочно, «🚨 Экстренно ухожу» (1 раз в день) или звоните владельцу.`, true);
 
   if (act === "hrs") {
     const st = Math.max(8, tbilisiHour());
@@ -1295,7 +1299,8 @@ async function onCourierCallback(cfg: Cfg, q: any, act: string, a: string, b: st
     await quiet(tg(cfg, "deleteMessage", { chat_id: chat, message_id: msg }));
   }
   if (!row) return answer();
-  const { error } = await db.from("driver_shifts").insert({ driver_id: d.id, day: r.day, ...row });
+  const { error } = SHIFT_STRICT ? await db.from("driver_shifts").insert({ driver_id: d.id, day: r.day, ...row })
+    : await db.from("driver_shifts").upsert({ driver_id: d.id, day: r.day, ...row, left_at: null, answered_at: new Date().toISOString() });
   if (error) { console.error(error); return answer("Вы уже отметились сегодня.", true); }
   await refreshPolls(cfg);
   await tellOwner(cfg, `🛵 ${esc(d.name)}: ${shiftLine(row)}\n\n${rosterText(await courierRoster())}`);
@@ -1362,12 +1367,22 @@ async function onCallback(cfg: Cfg, q: any) {
   return answer({ take: "Заказ ваш — позвоните клиенту", accept: "Принят", ready: "Собран — теперь «🛵 Еду»", go: "Клиент видит: едет", deliver: "Доставлен 🎉", cancel: "Отменён" }[act] || "");
 }
 
+// «смена» written in a couriers' chat: today's poll with the buttons, right now (also before 09:00 or if it scrolled away).
+async function onShiftWord(cfg: Cfg, m: any) {
+  if (!m.text || !/^\/?(смена|smena)(@\w+)?$/i.test(String(m.text).trim())) return false;
+  if (!(await courierChats()).includes(Number(m.chat.id))) return false;
+  const r = await courierRoster(m.chat.id);
+  const p = await tg(cfg, "sendMessage", { chat_id: m.chat.id, parse_mode: "HTML", text: pollText(r), reply_markup: pollKeyboard });
+  await db.from("courier_polls").upsert({ day: r.day, chat_id: m.chat.id, message_id: p.message_id });
+  return true;
+}
 async function onUpdate(cfg: Cfg, u: any) {
   if (u.callback_query) return onCallback(cfg, u.callback_query);
   const m = u.message;
   if (!m?.chat?.id) return;
   if (m.text && /^\/start/.test(m.text)) return onStart(cfg, m);
   if (await onSupportOwnerMessage(cfg, m)) return;   // chat with a customer
+  if (await onShiftWord(cfg, m)) return;              // couriers' group: «смена» → the shift poll
   if (await onOwnerText(cfg, m)) return;             // owner's menu: stock, payments
   if (m.text && ["private", "group", "supergroup"].includes(m.chat.type)) return onText(cfg, m); // supplier's «не сходится» note
 }
