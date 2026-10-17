@@ -48,7 +48,6 @@ Phase 0 audit completed. Phase 1 foundation has started on `pivka-v2`. The produ
 - Real Bundle/“Рывок” engine and bundle builder.
 - Gift tiers/progress engine.
 - Contextual upsell rules and category drill-down.
-- PASS.
 - “Спорим на пиво”.
 - “Угостить друга”.
 - Customers/order history/repeat order.
@@ -74,7 +73,7 @@ Phase 0 audit completed. Phase 1 foundation has started on `pivka-v2`. The produ
 - [x] Phase 0 — audit current repository
 - [~] Phase 1 — foundation: schema/data layer/admin shell created; needs Supabase project connection, owner bootstrap, order RPC/transaction logic and admin CRUD screens
 - [ ] Phase 2 — sales experience: new homepage order, gift progress, Рывки, TOP, catalog, contextual upsell, cart
-- [ ] Phase 3 — commercial engine: bundle builder, promotion mechanics, gift tiers, PASS, repeat order, product requests
+- [ ] Phase 3 — commercial engine: bundle builder, promotion mechanics, gift tiers, repeat order, product requests
 - [ ] Phase 4 — social: beer bet, treat a friend, share links, payment-ready flows
 - [ ] Phase 5 — operations: purchases, stock movements, drivers, expenses, daily close, procurement recommendation
 - [ ] Phase 6 — analytics/AI-ready layer
@@ -99,7 +98,7 @@ Before continuing, read `MASTER_SPEC.md` and this file. Continue from the first 
 Архитектурное решение (после аудита):
 - Голос: OpenAI Realtime (`gpt-realtime-2.1`) по WebRTC прямо из браузера. Постоянный ключ — только в Supabase Secret
   `OPENAI_API_KEY`; браузер получает одноразовый `ek_…` от функции `voice-session` (домены, лимиты по `store_events`).
-- ИИ только понимает речь и выбирает инструмент. Все товары/цены/рывки/подарки/доставка/PASS — существующая логика
+- ИИ только понимает речь и выбирает инструмент. Все товары/цены/рывки/подарки/доставка — существующая логика
   `store.js` (общий глобальный scope классических скриптов), без второй формулы цен. Подбор корзины —
   детерминированный `js/recommendation-engine.js`. Заказ отправляет только обычная форма (18+ сохраняется).
 - Модули отдельные (`js/voice-*.js`, `js/recommendation-engine.js`); `store.js` не менялся. Без ключа/при ошибке —

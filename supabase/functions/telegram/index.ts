@@ -1010,6 +1010,16 @@ async function onOwnerVideo(cfg: Cfg, url: string, caption: string) {
   return sent;
 }
 
+// A customer rated a delivered order on the order page.
+async function onOrderRated(cfg: Cfg, orderId: string) {
+  const { data: r } = await db.from("order_ratings").select("rating,comment").eq("order_id", orderId).maybeSingle();
+  if (!r) return 0;
+  const o = await loadOrder(orderId);
+  const text = `${"⭐".repeat(Number(r.rating))}${"☆".repeat(5 - Number(r.rating))} <b>Оценка заказа №${o.order_number}</b>` +
+    (o.customers?.full_name ? ` · ${esc(o.customers.full_name)}` : "") + (r.comment ? `\n💬 ${esc(r.comment)}` : "");
+  return await sendToKind(cfg, "OWNER", text);
+}
+
 async function onStockMorning(cfg: Cfg) {
   const r = await owner(null as any, "morning");
   const sold = (r.sold || []) as any[], stock = (r.stock || []) as any[], paid = r.paid || {};
@@ -1190,9 +1200,10 @@ async function askWho(cfg: Cfg, q: any, r?: any) {
   r = r || await courierRoster(chat);
   const free = [];
   for (const x of r.list) { const { data: t } = await db.from("driver_tg").select("user_id").eq("driver_id", x.id).maybeSingle(); if (!t) free.push(x); }
-  if (!free.length) return answer("Вас нет в списке курьеров. Скажите владельцу.", true);
+  if (await isOwnerChat(q.from?.id)) return answer("Вы владелец — отмечаются и берут заказы сами курьеры.", true);
   await quiet(tg(cfg, "sendMessage", { chat_id: chat, parse_mode: "HTML", text: `👤 ${esc(q.from?.first_name || "")}, кто вы в списке курьеров? Нажмите себя (один раз — дальше бот вас помнит)`,
-    reply_markup: { inline_keyboard: rows(free.map((x: any) => ({ text: x.name || "Курьер", callback_data: kcb("me", x.id) })), 2) } }));
+    reply_markup: { inline_keyboard: [...rows(free.map((x: any) => ({ text: x.name || "Курьер", callback_data: kcb("me", x.id) })), 2),
+      [{ text: "➕ Меня нет в списке", callback_data: kcb("new") }]] } }));
   return answer("Сначала выберите себя в списке ниже 👇, потом нажмите кнопку ещё раз", true);
 }
 async function onCourierCallback(cfg: Cfg, q: any, act: string, a: string, b: string) {
@@ -1201,7 +1212,23 @@ async function onCourierCallback(cfg: Cfg, q: any, act: string, a: string, b: st
   if (!(await courierChats()).includes(Number(chat))) return answer("Это только для чата курьеров.", true);
   const r = await courierRoster(chat);
   // «Кто ты?» — the first press of a Telegram user in the couriers' chat links him to a courier.
+  // A courier who is not in the list adds himself (name from Telegram, city of this group); the owner is told.
+  if (act === "new") {
+    if (await isOwnerChat(user)) return answer("Вы владелец — курьеры добавляют себя сами.", true);
+    const { data: had } = await db.from("driver_tg").select("driver_id").eq("user_id", user).maybeSingle();
+    if (had) return answer("Вы уже в списке курьеров.", true);
+    const city = r.list[0]?.city_id || null;
+    const name = String([q.from?.first_name, q.from?.last_name].filter(Boolean).join(" ") || "Курьер").slice(0, 40);
+    const { data: d, error } = await db.from("drivers").insert({ name, city_id: city, active: true }).select("id").single();
+    if (error || !d) { console.error(error); return answer("Не получилось добавить. Скажите владельцу.", true); }
+    await db.from("driver_tg").insert({ user_id: user, driver_id: d.id });
+    await quiet(tg(cfg, "deleteMessage", { chat_id: chat, message_id: msg }));
+    await refreshPolls(cfg);
+    await tellOwner(cfg, `🛵 Новый курьер в группе: <b>${esc(name)}</b>. Если это не курьер — скажите, уберу.`);
+    return answer("Готово ✅ Вы в списке курьеров. Теперь нажмите нужную кнопку ещё раз.", true);
+  }
   if (act === "me") {
+    if (await isOwnerChat(user)) return answer("Вы владелец — отмечаются и берут заказы сами курьеры.", true);
     const d = r.list.find((x: any) => x.id === a);
     if (!d) return answer();
     const { data: taken } = await db.from("driver_tg").select("user_id").eq("driver_id", d.id).maybeSingle();
@@ -1410,6 +1437,7 @@ Deno.serve(async (req) => {
       if (b.action === "support_in") return out({ sent: await onSupportIn(cfg, Number(b.message_id)) });
       if (b.action === "stock_morning") return out({ sent: await onStockMorning(cfg) });
       if (b.action === "owner_video") return out({ sent: await onOwnerVideo(cfg, String(b.url || ""), String(b.caption || "")) });
+      if (b.action === "order_rated") return out({ sent: await onOrderRated(cfg, b.order_id) });
       if (b.action === "courier_morning") return out({ sent: await onCourierMorning(cfg) });
       if (b.action === "courier_remind") return out({ sent: await onCourierMorning(cfg, true) });
       if (b.action === "preorder_morning") return out({ sent: await onPreorderMorning(cfg) });

@@ -23,6 +23,7 @@ h1{font-size:26px;margin:0 0 2px}.muted{color:#a9afb3;font-size:13px}
 .ryvokCard{margin-top:12px;border:1px solid rgba(255,181,27,.4);background:linear-gradient(90deg,rgba(255,181,27,.16),rgba(255,181,27,.04));border-radius:16px;padding:12px 14px;display:grid;gap:3px;font-size:13px;color:#e6e8ea}.ryvokCard>b{color:#ffb51b;font-size:16px}.ryvokCard .ryvokPrize{color:#fff;font-weight:900}
 .refCard{margin:12px 0;padding:14px;border-radius:16px;border:1px solid rgba(255,181,27,.45);background:linear-gradient(90deg,rgba(255,181,27,.16),rgba(255,181,27,.04));display:grid;gap:8px}.refCard>b{color:#ffb51b;font-size:16px}.refCard span{color:#e6e8ea;font-size:14px}.refCard input{width:100%;min-height:44px;font-size:15px;border-radius:10px;border:1px solid #3a4145;background:#0d1011;color:#fff;padding:0 10px}.refCard button{border:0;cursor:pointer;width:100%;font-size:15px}
 .ryvokPlay{display:block;margin-top:6px;text-align:center;background:#ffb51b;color:#171000;border-radius:12px;padding:12px;font-weight:1000;text-decoration:none}
+.rate{text-align:center}.stars{display:flex;justify-content:center;gap:6px;margin:6px 0 10px}.stars button{background:none;border:0;font-size:38px;line-height:1;color:#3a4145;cursor:pointer;padding:2px}.stars button.on{color:#ffb51b}.rate textarea{width:100%;min-height:70px;background:#0d1011;border:1px solid #333b3f;color:#fff;border-radius:12px;padding:12px;font:inherit;font-size:16px}.rate .btn{width:100%;border:0;cursor:pointer}
 </style></head><body>
 <main class="app">
 <a class="logo" href="./"><span>Пивка</span><br><b>для рывка</b></a>
@@ -30,7 +31,7 @@ h1{font-size:26px;margin:0 0 2px}.muted{color:#a9afb3;font-size:13px}
 <div class="muted" id="sub">Загрузка…</div>
 <div id="box"></div>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="./config.js"></script><script src="./js/track.js?v=20261007b"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="./config.js"></script><script src="./js/track.js?v=20261017a"></script>
 <script>
 // The order's own page: the link is on the success screen and in the order card on the home page, so the order can
 // always be found again — from any browser, even after the phone forgot the site. Access = the random order id.
@@ -97,14 +98,17 @@ function render(o, v) {
     if (o.fulfillment === 'delivery') lines.push('<div class="line"><span>Доставка</span><b>' + money(v.delivery_fee) + '</b></div>');
     h += '<div class="card"><h2>Что заказано</h2>' + lines.join('') + '<div class="sum"><span>Итого</span><span>' + money(v.total) + '</span></div></div>';
   }
+  h += waButton(o, v);
   if (o.status === 'NEW') h += '<a class="btn yellow" href="./edit.html?o=' + encodeURIComponent(ORDER) + '">✏️ Изменить заказ</a>';
   // Nobody has confirmed the order yet — the customer can still cancel it. After «Принят» — only by writing to us in the chat.
   if (o.status === 'NEW') h += '<button class="btn ghost" id="cancelOrder" type="button" style="width:100%;background:none;cursor:pointer">❌ Отменить заказ</button>';
+  if (o.status === 'DELIVERED') h += '<div class="card rate" id="rate"></div>';
   h += '<div class="ryvokSlot"></div>';
   if (o.status !== 'CANCELLED') h += refCard(REFI);   // «Рывок» game, once the courier pressed «Еду»
   h += '<button type="button" class="btn wa" data-chat style="width:100%;border:0;cursor:pointer">💬 Написать нам в чат</button>' +
     '<a class="btn ghost" href="./">← В магазин</a>';
   $('box').innerHTML = h;
+  if (o.status === 'DELIVERED') renderRate();
   if (ryvokEligible(o)) ryvokState(ORDER).then(g => { const slot = $('box').querySelector('.ryvokSlot'); if (slot) slot.innerHTML = ryvokBlock(ORDER, g, document.documentElement.lang || 'ru') });
   const sh = $('shareRef');
   if (sh) sh.onclick = () => shareRef($('box').querySelector('.refCard input').value);
@@ -114,6 +118,54 @@ function render(o, v) {
     const left = new Date(o.ready_at).getTime() + 30e3 - trackNow(o);
     if (left > 0) tick = setTimeout(() => render(o, v), left + 300);
   }
+}
+// WhatsApp copy of the order (wa.me with the text ready, no API): the full text saved at checkout on this phone,
+// otherwise built from the order itself. PIVKA_CONFIG.whatsapp = our number; without it WhatsApp asks whom to send to.
+function waButton(o, v) {
+  if (o.status === 'CANCELLED' || o.status === 'REFUNDED') return '';
+  let text = '';
+  try { text = localStorage.getItem('pivka_wa_' + ORDER) || '' } catch (e) {}
+  if (!text && v) {
+    const L = [T('✅ Пивка для рывка — заказ №') + o.order_number];
+    if (v.bundle) L.push('• 🍻 ' + v.bundle.items.map(i => i.name + ' × ' + unit(i.qty, i.unit)).join(', '));
+    v.items.forEach(i => L.push('• ' + i.name + ' × ' + unit(i.qty, i.unit)));
+    L.push('');
+    if (o.fulfillment === 'delivery') L.push(T('Доставка') + ': ' + money(v.delivery_fee));
+    else L.push('📍 ' + T('Самовывоз'));
+    L.push(T('Итого') + ': ' + money(v.total));
+    L.push('🕐 ' + new Date(o.created_at).toLocaleString('ru-RU', { timeZone: 'Asia/Tbilisi', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }));
+    L.push('', T('Статус заказа') + ': ' + location.href.split('#')[0]);
+    text = L.join('\n');
+  }
+  if (!text) return '';
+  const num = String(PIVKA_CONFIG.whatsapp || '').replace(/\D/g, '');
+  return '<a class="btn wa" target="_blank" rel="noopener" href="' + esc('https://wa.me/' + num + '?text=' + encodeURIComponent(text)) + '">📲 Подтверждение в WhatsApp</a>';
+}
+// After delivery: 5 stars + «Что улучшить» (optional) → public.rate_order (kept next to the order, the owner sees it).
+let RATE = null;
+async function renderRate() {
+  const box = $('rate');
+  if (!box) return;
+  if (!RATE) { try { const r = await sb.rpc('order_rating', { p_order: ORDER }); RATE = r.data || { rating: 0 } } catch (e) { RATE = { rating: 0 } } }
+  if (!$('rate')) return;
+  const done = RATE.saved || (RATE.rating && !RATE.editing);
+  box.innerHTML = '<h2>' + esc(done ? T('Спасибо за оценку!') : T('Как всё прошло?')) + '</h2>' +
+    '<div class="stars">' + [1, 2, 3, 4, 5].map(n => '<button type="button" data-n="' + n + '" class="' + (n <= (RATE.pick || RATE.rating || 0) ? 'on' : '') + '" aria-label="' + n + '">★</button>').join('') + '</div>' +
+    (done ? (RATE.comment ? '<div class="muted">' + esc(RATE.comment) + '</div>' : '') + '<button type="button" class="btn ghost" id="rateEdit" style="background:none">' + esc(T('Изменить оценку')) + '</button>'
+      : '<textarea id="rateText" maxlength="1000" placeholder="' + esc(T('Что улучшить? (необязательно)')) + '">' + esc(RATE.comment || '') + '</textarea>' +
+        '<button type="button" class="btn yellow" id="rateSend"' + (RATE.pick || RATE.rating ? '' : ' disabled') + '>' + esc(T('Отправить оценку')) + '</button>');
+  box.querySelectorAll('.stars button').forEach(b => b.onclick = () => { if (done) return; RATE.pick = Number(b.dataset.n); RATE.comment = ($('rateText') || {}).value || RATE.comment; renderRate() });
+  if ($('rateEdit')) $('rateEdit').onclick = () => { RATE.editing = true; RATE.saved = false; renderRate() };
+  if ($('rateSend')) $('rateSend').onclick = async () => {
+    const n = RATE.pick || RATE.rating, c = $('rateText').value.trim();
+    $('rateSend').disabled = true;
+    try {
+      const r = await sb.rpc('rate_order', { p_order: ORDER, p_rating: n, p_comment: c || null });
+      if (r.error) throw r.error;
+      RATE = { rating: n, comment: c, saved: true };
+    } catch (e) { alert(T('Не получилось отправить. Попробуйте ещё раз.')); $('rateSend').disabled = false; return }
+    renderRate();
+  };
 }
 async function cancelOrder() {
   const t = (x) => window.PIVKA_I18N ? PIVKA_I18N.translate(x, PIVKA_I18N.language) : x;
@@ -130,7 +182,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 window.setLang = l => { document.documentElement.lang = l };
 load();
 </script>
-<script src="./js/i18n.js?v=20261015b"></script><script src="./js/chat.js?v=20261013b"></script>
+<script src="./js/i18n.js?v=20261017a"></script><script src="./js/chat.js?v=20261013b"></script>
 <script>
 (() => { let l = 'ru'; try { l = localStorage.getItem('pivka_lang') || (navigator.language || '').slice(0, 2) } catch (e) {} setLang(['ru', 'ka', 'hy'].includes(l) ? l : 'ru') })();
 </script>

@@ -572,28 +572,6 @@ document.addEventListener('visibilitychange', () => {
 // Back from the game page (browser back keeps the old page in memory): re-check, so a finished game closes the card.
 window.addEventListener('pageshow', (e) => { if (e.persisted && trackSaved()) refreshTrack() });
 
-let passPlan = 'DAY';
-function openPass() {
-  passOverlay.classList.add('on')
-}
-function pickPassPlan(el) {
-  passPlan = el.dataset.plan;
-  document.querySelectorAll('.passPlan').forEach(b => b.classList.toggle('on', b === el));
-  passGo.textContent = 'Оформить PASS за ' + (passPlan === 'NIGHT' ? 40 : 20) + ' ₾ →'
-}
-async function activatePass() {
-  if (passPhone.value.trim().length < 6) {
-    alert('Укажи телефон');
-    return
-  }
-  try {
-    const r = await PIVKA_DB.startPass(passName.value.trim(), passPhone.value.trim(), passPlan);
-    passBody.innerHTML = '<div class="success"><div class="big">👑</div><h2>PASS подготовлен</h2><p class="muted">' + (r.plan === 'NIGHT' ? 'Ночной PASS — 40 ₾ / месяц.' : 'Дневной PASS — 20 ₾ / месяц.') + ' Оплатите переводом — после оплаты мы включим PASS на 30 дней.</p>' + [...paymentLinks.querySelectorAll('a')].map(x => x.outerHTML).join('') + '</div>'
-  } catch (e) {
-    alert(e.message)
-  }
-}
-
 function openSocial(type) {
   socialType = type;
   socialTitle.textContent = type === 'TREAT' ? '🍻 Угостить друга' : '🏆 Спорим на пиво?';
@@ -1347,7 +1325,7 @@ function setFulfillment(v) {
   refreshDeliveryQuote()
 }
 
-// Delivery fee comes from the server rule (zone, owner switch, PASS 12:00–22:00); the zone fee is only a fallback.
+// Delivery fee comes from the server rule (zone, owner switch, day/night); the zone fee is only a fallback.
 let deliveryQuoteState = { fee: null, reason: null, mode: 'CHARGE' }, quoteSeq = 0;
 // After a successful order the form is replaced by the confirmation screen.
 const checkoutFormAlive = () => !!document.getElementById('coZone');
@@ -1396,7 +1374,7 @@ function updateCheckoutTotal() {
   renderRuCard();
   checkoutNotice.style.display = fulfillment === 'delivery' ? 'block' : 'none';
   const min = opt?.dataset?.min && Number(opt.dataset.min) ? ' · Минимальный заказ ' + money(opt.dataset.min) : '';
-  const feeText = deliveryQuoteState.reason === 'FREE_FROM' ? 'Доставка бесплатно — заказ от ' + deliveryRule().free + ' ₾' : deliveryQuoteState.reason === 'ZONE' && fee > 0 ? 'Доставка: ' + money(fee) + ' · от ' + deliveryRule().free + ' ₾ — бесплатно' : deliveryQuoteState.reason === 'PASS_SMALL' ? 'Доставка: ' + money(fee) + ' · с PASS от 30 ₾ — бесплатно' : deliveryQuoteState.reason === 'PASS' ? 'Доставка: 0 ₾ — PASS' : mode === 'HIDDEN' ? '' : mode === 'FREE' ? 'Доставка бесплатно' : 'Доставка: ' + money(fee);
+  const feeText = deliveryQuoteState.reason === 'FREE_FROM' ? 'Доставка бесплатно — заказ от ' + deliveryRule().free + ' ₾' : deliveryQuoteState.reason === 'ZONE' && fee > 0 ? 'Доставка: ' + money(fee) + ' · от ' + deliveryRule().free + ' ₾ — бесплатно' : mode === 'HIDDEN' ? '' : mode === 'FREE' ? 'Доставка бесплатно' : 'Доставка: ' + money(fee);
   checkoutNotice.textContent = fulfillment === 'delivery' ? (coZone.value ? (feeText + min).replace(/^ · /, '') || 'Доставка' : 'Выбери зону доставки') : 'Самовывоз — без платы за доставку'
 }
 
@@ -1506,6 +1484,8 @@ async function submitCheckout() {
       ref: REF || null, use_bonus: bonusX() > 0 } });
     if (x.error) throw x.error;
     const r = x.data;
+    const waFee = currentDeliveryFee();
+    const waLines = (checkoutBundle ? ['🍻 ' + pname(checkoutBundle)] : []).concat(Object.values(cart).map(c => pname(c.p) + ' × ' + c.qty + (c.p.unit === 'liter' ? unitL() : '')));
     try { localStorage.removeItem('pivka_ref') } catch (e) {}
     REF = '';
     if (window.pivkaSound) pivkaSound('order');
@@ -1513,9 +1493,13 @@ async function submitCheckout() {
     try {
       if (r.order_id) localStorage.setItem(TRACK_KEY, JSON.stringify({ id: r.order_id, n: r.order_number, at: Date.now() }))
     } catch (e) {}
-    // The order has its own page (status, «Рывок» game, chat with us) — no WhatsApp, no phone number.
+    // The order has its own page (status, «Рывок» game, chat with us); its link also goes into the WhatsApp copy.
     const orderUrl = r.order_id ? new URL('order.html?o=' + r.order_id, location.href.split(/[?#]/)[0].replace(/[^/]*$/, '')).href : '';
-    checkoutBody.innerHTML = `<div class="success"><div class="big">🍻</div><h2>Рывок принят!</h2><p class="muted">Заказ №${r.order_number}<br>${Number(r.bonus_used) > 0 ? '💎 ' + esc(tr('Баллами')) + ': −' + money(r.bonus_used) + '<br>' : ''}${r.scheduled_for ? '🕐 ' + esc(tr('Предзаказ — привезём к')) + ' ' + esc(preLabel(new Date(r.scheduled_for))) + '<br>' : ''}Сумма: ${money(r.total)}</p>${orderUrl ? `<a class="yellow checkout" style="display:block;text-decoration:none" href="${orderUrl}">Мой заказ и статус →</a>${['transfer', 'ru_card'].includes(coPayment.value) ? '<button type="button" class="yellow checkout" data-chat style="display:block;width:100%;border:0;cursor:pointer">📷 Отправить скриншот перевода</button>' : ''}<button type="button" class="skip" data-chat>💬 Вопрос по заказу? Напишите нам в чат</button>` : ''}<button class="skip" onclick="try{sessionStorage.setItem('pivka_intro_short','1')}catch(e){};location.reload()">Готово</button></div>`;
+    const waText = waOrderText({ n: r.order_number, lines: waLines, fee: waFee, total: Number(r.total), goods: Math.max(0, Number(r.total) - waFee),
+      bonus: Number(r.bonus_used) || 0, pickup: fulfillment !== 'delivery', address, pay: coPayment.options[coPayment.selectedIndex]?.text || '',
+      when: r.scheduled_for ? tr('Предзаказ — привезём к') + ' ' + preLabel(new Date(r.scheduled_for)) : preLabel(new Date()), url: orderUrl });
+    try { if (r.order_id) localStorage.setItem('pivka_wa_' + r.order_id, waText) } catch (e) {}
+    checkoutBody.innerHTML = `<div class="success"><div class="big">🍻</div><h2>Рывок принят!</h2><p class="muted">Заказ №${r.order_number}<br>${Number(r.bonus_used) > 0 ? '💎 ' + esc(tr('Баллами')) + ': −' + money(r.bonus_used) + '<br>' : ''}${r.scheduled_for ? '🕐 ' + esc(tr('Предзаказ — привезём к')) + ' ' + esc(preLabel(new Date(r.scheduled_for))) + '<br>' : ''}Сумма: ${money(r.total)}</p>${orderUrl ? `<a class="yellow checkout" style="display:block;text-decoration:none" href="${orderUrl}">Мой заказ и статус →</a><a class="waBtn" href="${esc(waOrderLink(waText))}" target="_blank" rel="noopener">📲 Подтверждение в WhatsApp</a>${['transfer', 'ru_card'].includes(coPayment.value) ? '<button type="button" class="yellow checkout" data-chat style="display:block;width:100%;border:0;cursor:pointer">📷 Отправить скриншот перевода</button>' : ''}<button type="button" class="skip" data-chat>💬 Вопрос по заказу? Напишите нам в чат</button>` : ''}<button class="skip" onclick="try{sessionStorage.setItem('pivka_intro_short','1')}catch(e){};location.reload()">Готово</button></div>`;
     // The same status card as on the home page.
     checkoutBody.querySelector('.success').insertAdjacentHTML('beforeend', '<div id="orderTrack" class="trackCard" hidden></div>');
     if (r.order_id) referralCard(r.order_id).then(h => { const s = checkoutBody.querySelector('.success'); if (h && s) s.insertAdjacentHTML('beforeend', h) });
@@ -1535,6 +1519,28 @@ async function submitCheckout() {
     submitOrder.disabled = false;
     submitOrder.textContent = 'Подтвердить заказ →'
   }
+}
+
+// WhatsApp copy of the order for the customer: no API, no registration — a wa.me link with the text ready.
+// PIVKA_CONFIG.whatsapp (our number, digits) → the message goes to our chat; without it WhatsApp asks whom to send it to
+// (the customer can send it to himself). The same text is kept on this phone for the order page.
+function waOrderText(o) {
+  const L = [tr('✅ Пивка для рывка — заказ №') + o.n];
+  o.lines.forEach(l => L.push('• ' + l));
+  L.push('');
+  L.push(tr('Товары') + ': ' + money(o.goods));
+  if (o.bonus > 0) L.push(tr('Баллами') + ': −' + money(o.bonus));
+  L.push(o.pickup ? tr('Самовывоз — без платы за доставку') : tr('Доставка') + ': ' + (o.fee > 0 ? money(o.fee) : tr('бесплатно')));
+  L.push(tr('Итого') + ': ' + money(o.total));
+  L.push(tr('Оплата') + ': ' + o.pay);
+  L.push(o.pickup ? '📍 ' + tr('Самовывоз') : '📍 ' + o.address);
+  L.push('🕐 ' + o.when);
+  if (o.url) { L.push(''); L.push(tr('Статус заказа') + ': ' + o.url) }
+  return L.join('\n')
+}
+function waOrderLink(text) {
+  const num = String(window.PIVKA_CONFIG?.whatsapp || '').replace(/\D/g, '');
+  return 'https://wa.me/' + num + '?text=' + encodeURIComponent(text)
 }
 
 function renderCatHead(cat, rows) {
@@ -1688,7 +1694,7 @@ const I18N = {
     catalog: 'Каталог',
     city: '📍 Город доставки',
     trust: ['⚡ Быстрый заказ', '💵 Наличные / перевод', '🔞 Только 18+'],
-    actions: ['Угостить друга', 'Спорим на пиво?', 'Пивка PASS'],
+    actions: ['Угостить друга', 'Спорим на пиво?'],
     cats: ['Пиво', 'Крепкий алкоголь', 'Вино', 'Рыба', 'Снеки', 'Мясные закуски', 'Шоколад', 'Сыр', 'Орехи', 'Напитки', 'Энергетики'],
     notfound: 'Не нашли товар?',
     tell: 'Сообщить',
@@ -1717,7 +1723,7 @@ const I18N = {
     catalog: 'კატალოგი',
     city: '📍 მიწოდების ქალაქი',
     trust: ['⚡ სწრაფი შეკვეთა', '💵 ნაღდი / გადარიცხვა', '🔞 მხოლოდ 18+'],
-    actions: ['გაუმასპინძლდი მეგობარს', 'დადე ფსონი ლუდზე', 'ლუდის PASS'],
+    actions: ['გაუმასპინძლდი მეგობარს', 'დადე ფსონი ლუდზე'],
     cats: ['ლუდი', 'ძლიერი ალკოჰოლი', 'ღვინო', 'თევზი', 'სნექები', 'ხორცის მისაყოლებელი', 'შოკოლადი', 'ყველი', 'თხილეული', 'სასმელები', 'ენერგეტიკული'],
     notfound: 'ვერ იპოვე პროდუქტი?',
     tell: 'შეგვატყობინე',
@@ -1746,7 +1752,7 @@ const I18N = {
     catalog: 'Կատալոգ',
     city: '📍 Առաքման քաղաք',
     trust: ['⚡ Արագ պատվեր', '💵 Կանխիկ / փոխանցում', '🔞 Միայն 18+'],
-    actions: ['Հյուրասիրել ընկերոջը', 'Գրազ գարեջրի վրա', 'Գարեջրի PASS'],
+    actions: ['Հյուրասիրել ընկերոջը', 'Գրազ գարեջրի վրա'],
     cats: ['Գարեջուր', 'Թունդ ալկոհոլ', 'Գինի', 'Ձուկ', 'Խորտիկներ', 'Մսային խորտիկներ', 'Շոկոլադ', 'Պանիր', 'Ընկույզներ', 'Ըմպելիքներ', 'Էներգետիկ'],
     notfound: 'Չգտա՞ք ապրանքը',
     tell: 'Հայտնել',

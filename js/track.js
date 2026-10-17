@@ -1,5 +1,5 @@
 // Order status steps, shared by the store's status card and order.html.
-// Получен → Принят → Собран (courier «📦 Собран») → Едет (courier «🛵 Еду») → Доставлен / Отменён;
+// Получен → Принят → Собираем (courier «📦 Собран») → Везём (courier «🛵 Еду») → Доставлен / Отменён;
 // pickup: … → Готов — можно забирать → Забран.
 function trackTime(v) {
   return v ? new Date(v).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tbilisi' }) : ''
@@ -21,7 +21,7 @@ function trackSteps(o) {
   const going = goAt && (doneAt || (o.cancelled_at ? new Date(o.cancelled_at).getTime() : trackNow(o)) >= goAt);
   const steps = pickup ?
     [['Получен', o.created_at], ['Принят', o.confirmed_at], ['Готов — можно забирать', o.ready_at], ['Забран', o.delivered_at]] :
-    [['Получен', o.created_at], ['Принят', o.confirmed_at], ['Собран', o.ready_at], ['Едет', going ? goAt : null], ['Доставлен', o.delivered_at]];
+    [['Получен', o.created_at], ['Принят', o.confirmed_at], ['Собираем', o.ready_at], ['Везём', going ? goAt : null], ['Доставлен', o.delivered_at]];
   if (o.status === 'CANCELLED' || o.status === 'REFUNDED') {
     return steps.filter(s => s[1]).map(s => [s[0], s[1], 'done']).concat([['Отменён', o.cancelled_at, 'cancel']])
   }

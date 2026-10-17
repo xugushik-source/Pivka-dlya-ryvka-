@@ -72,7 +72,7 @@
     else cart[p.id] = { p, qty: q };
   }
   const STRONG = (window.PivkaReco && PivkaReco.STRONG) || [];
-  // Delivery / PASS rules from the server (public.night_pricing); loaded by store.js, fetched here if not yet.
+  // Delivery rules from the server (public.night_pricing); loaded by store.js, fetched here if not yet.
   async function policy() {
     if (typeof NIGHT !== 'undefined' && NIGHT && NIGHT.delivery) return NIGHT.delivery;
     try { const r = await PIVKA_DB.client().rpc('night_pricing'); if (!r.error && r.data) { if (typeof NIGHT !== 'undefined' && !NIGHT) NIGHT = r.data; return r.data.delivery || {} } } catch (e) {}
@@ -200,21 +200,6 @@
       }
     },
     get_gift_progress() { return giftView() },
-    async get_pass_status_or_offer() {
-      const d = await policy();
-      const offer = {
-        day: { price: d.pass_price, hours: (d.pass_from || '12:00') + '–' + (d.pass_to || '23:00'), free_from: d.pass_free_from, small_order_fee: d.pass_fee },
-        night: { price: d.pass_night_price, extra_hours: (d.night_from || '23:00') + '–' + (d.night_to || '08:00'), free_from: d.pass_free_from, small_order_fee: d.pass_night_fee },
-        how: 'PASS is bought from the 👑 PASS button and switched on after a bank transfer.',
-      };
-      let active = null;
-      try {
-        const phone = JSON.parse(localStorage.getItem('pivka_profile') || '{}').phone;
-        const zone = typeof coZone !== 'undefined' && [...coZone.options].find((o) => o.value);
-        if (phone && zone) { const q = await PIVKA_DB.deliveryQuote(zone.value, phone, 'delivery', 100); active = /PASS/.test(q.reason || '') ? (q.plan || true) : false }
-      } catch (e) {}
-      return { offer, active_for_saved_phone: active };
-    },
     prepare_checkout() {
       if (!checkoutBundle && !Object.keys(cart).length) return fail('cart_empty');
       track('voice_checkout_open', { metadata: { total: r2(orderBase()) } });
