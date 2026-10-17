@@ -36,8 +36,7 @@ update public.store_settings
    set value = value - 'pass_from' - 'pass_to' - 'pass_fee' - 'pass_price' - 'pass_free_from' - 'pass_night_fee' - 'pass_night_price'
  where key = 'delivery_policy';
 
--- Nothing calls the old subscription functions any more; they and their table are closed to the site.
--- (Dropping them for good needs the owner's confirmation in the database console.)
-revoke all on function public.start_pass(text, text) from public, anon, authenticated;
-revoke all on function public.start_pass(text, text, text) from public, anon, authenticated;
-revoke all on table public.pass_subscriptions from anon, authenticated;
+-- Dropped by the owner in the SQL editor (17.10):
+drop function if exists public.start_pass(text, text);
+drop function if exists public.start_pass(text, text, text);
+drop table if exists public.pass_subscriptions;
