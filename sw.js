@@ -1,7 +1,7 @@
 // Service worker: only the site's shell (pages, styles, scripts, icons) is kept for a weak connection.
 // Catalog, prices, stock and orders come from Supabase (another origin) — never touched here, always fresh.
 // Pages and scripts: network first (a new version shows at once), the cached copy only when offline.
-const CACHE = 'pivka-shell-20261017a';
+const CACHE = 'pivka-shell-20261017b';
 const SHELL = ['./', './index.html', './order.html', './config.js', './manifest.json', './assets/pwa/icon-192.png'];
 
 self.addEventListener('install', (e) => {
