@@ -1151,7 +1151,7 @@ async function courierRoster(chat?: number) {
     if (cities.length) q = q.in("city_id", cities);
   }
   const { data: ds } = await q;
-  const { data: sh } = await db.from("driver_shifts").select("driver_id,mode,from_h,to_h,left_at").eq("day", day);
+  const { data: sh } = await db.from("courier_day_shifts").select("driver_id,mode,from_h,to_h,left_at").eq("day", day);
   const by = new Map((sh || []).map((x: any) => [x.driver_id, x]));
   return { day, list: (ds || []).map((d: any) => ({ ...d, shift: by.get(d.id) || null })) };
 }
@@ -1261,7 +1261,7 @@ async function onCourierCallback(cfg: Cfg, q: any, act: string, a: string, b: st
       return answer();
     }
     if (!mine(a)) return answer("Это не ваша кнопка.", true);
-    await db.from("driver_shifts").update({ left_at: new Date().toISOString() }).eq("driver_id", d.id).eq("day", r.day);
+    await db.from("courier_day_shifts").update({ left_at: new Date().toISOString() }).eq("driver_id", d.id).eq("day", r.day);
     await quiet(tg(cfg, "editMessageText", { chat_id: chat, message_id: msg, parse_mode: "HTML", text: `🚨 ${esc(d.name)} экстренно ушёл со смены в ${hm(new Date().toISOString())}.` }));
     await refreshPolls(cfg);
     await tellOwner(cfg, `🚨 <b>${esc(d.name)} ЭКСТРЕННО ушёл со смены</b> в ${hm(new Date().toISOString())}\n\n${rosterText(await courierRoster())}`);
@@ -1299,9 +1299,9 @@ async function onCourierCallback(cfg: Cfg, q: any, act: string, a: string, b: st
     await quiet(tg(cfg, "deleteMessage", { chat_id: chat, message_id: msg }));
   }
   if (!row) return answer();
-  const { error } = SHIFT_STRICT ? await db.from("driver_shifts").insert({ driver_id: d.id, day: r.day, ...row })
-    : await db.from("driver_shifts").upsert({ driver_id: d.id, day: r.day, ...row, left_at: null, answered_at: new Date().toISOString() });
-  if (error) { console.error(error); return answer("Вы уже отметились сегодня.", true); }
+  const { error } = SHIFT_STRICT ? await db.from("courier_day_shifts").insert({ driver_id: d.id, day: r.day, ...row })
+    : await db.from("courier_day_shifts").upsert({ driver_id: d.id, day: r.day, ...row, left_at: null, answered_at: new Date().toISOString() });
+  if (error) { console.error(error); return answer(SHIFT_STRICT ? "Вы уже отметились сегодня." : "Не сохранилось — нажмите ещё раз.", true); }
   await refreshPolls(cfg);
   await tellOwner(cfg, `🛵 ${esc(d.name)}: ${shiftLine(row)}\n\n${rosterText(await courierRoster())}`);
   return answer("Записал ✅ " + shiftLine(row));
