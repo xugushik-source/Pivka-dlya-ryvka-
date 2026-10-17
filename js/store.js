@@ -1542,6 +1542,7 @@ async function submitCheckout() {
     // The same status card as on the home page.
     checkoutBody.querySelector('.success').insertAdjacentHTML('beforeend', '<div id="orderTrack" class="trackCard" hidden></div>');
     if (r.order_id) referralCard(r.order_id).then(h => { const s = checkoutBody.querySelector('.success'); if (h && s) s.insertAdjacentHTML('beforeend', h) });
+    if (window.PivkaPWA) PivkaPWA.offer(checkoutBody.querySelector('.success'));   // «Установить на телефон», ≤ 1 in 14 days
     document.querySelector('#todaySection #orderTrack')?.remove();
     refreshTrack();
     Object.keys(cart).forEach(k => delete cart[k]);
