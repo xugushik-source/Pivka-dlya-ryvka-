@@ -18,10 +18,10 @@ let catalog = [],
 const lang = () => document.documentElement.lang || 'ru';
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const STRONG_GROUP = ['strong', 'vodka', 'whisky', 'brandy', 'rum', 'gin', 'tequila', 'liqueur', 'vermouth'];
-const ALCOHOL = [...STRONG_GROUP, 'wine', 'draft'];
+const ALCOHOL = [...STRONG_GROUP, 'wine', 'draft', 'beer'];
 // Storefront navigation: 6 main tiles, then "Ещё к столу". Empty sections are hidden, never shown as empty shelves.
 const CATS = [
-  { slug: 'draft', ico: '🍺', label: 'Пиво', title: 'Пиво', grp: 'alc' },
+  { slug: 'draft', ico: '🍺', label: 'Пиво', title: 'Пиво', grp: 'alc', group: ['draft', 'beer'] },
   { slug: 'strong', ico: '🥃', label: 'Крепкое', title: 'Крепкие напитки', grp: 'alc', group: STRONG_GROUP },
   { slug: 'wine', ico: '🍷', label: 'Вино', title: 'Вино', grp: 'alc' },
   { slug: 'pizza', ico: '🍕', label: 'Пицца и хачапури', title: 'Пицца и хачапури', grp: 'food' },
@@ -198,7 +198,8 @@ setInterval(async () => {
 const ADDON_SKUS = ['KRI-SUPPLY-NAPKIN-2525', 'KRI-SUPPLY-CUPS-PAPER-050', 'KRI-PICKLE-CORNICH-370', 'KRI-PICKLE-CORN-370', 'KRI-NUTS-MARTIN-PISTA-080', 'KRI-CHEESE-STICK-100', 'KRI-SNACK-MARTIN-150', 'KRI-SUPPLY-NAPKIN-3030'];
 const SUB_LABEL = {
   vodka: ['водка', 'არაყი', 'օղի'], whisky: ['виски', 'ვისკი', 'վիսկի'], brandy: ['коньяк', 'კონიაკი', 'կոնյակ'],
-  strong: ['ликёры', 'ლიქიორები', 'լիկյորներ'], rum: ['ром', 'რომი', 'ռոմ'], gin: ['джин', 'ჯინი', 'ջին'], tequila: ['текила', 'ტეკილა', 'տեկիլա']
+  strong: ['ликёры', 'ლიქიორები', 'լիկյորներ'], rum: ['ром', 'რომი', 'ռոմ'], gin: ['джин', 'ჯინი', 'ջին'], tequila: ['текила', 'ტეკილა', 'տեկիլա'],
+  draft: ['разливное от 2 л', 'ჩამოსასხმელი 2 ლ-დან', 'լցովի 2 լ-ից'], beer: ['в бутылках', 'ბოთლში', 'շշով']
 };
 // Real photos for section tiles (assets/cat): scene crops from the bar photo, or real packshots on the same bar backdrop.
 const CAT_IMG = ['shawarma', 'draft', 'strong', 'wine', 'pizza', 'restaurant', 'fish', 'meat-snacks', 'cheese', 'nuts', 'chips', 'snacks', 'soft-drinks', 'energy', 'salty', 'seafood', 'frozen', 'supplies'];
