@@ -354,7 +354,7 @@ const TRACK_KEY = 'pivka_last_order';
 // Referral: ?ref=CODE (a friend's personal link) is kept until this phone's first order; the server credits the
 // friend only if this is really a new customer. Points: up to 10 % of the products (not Рывки), no gift then.
 const REF_RE = /^[A-Z0-9]{4,10}$/;
-const SHARE_TEXT = '🔥 Пивка для рывка — шашлык с мангала, шаурма, пицца, хачапури и закуски с доставкой домой.\nЗаказывай по моей ссылке 👇\n{link}\nС твоего первого заказа мне начислят бонусные баллы. А потом возьми свою ссылку — первая кнопка на сайте — и тоже получай 50% с заказов друзей 😉';
+const SHARE_TEXT = '🎁 Дарю тебе бесплатную доставку + закуску к первому заказу в «Пивка для рывка» — шашлык, пицца, хачапури домой, платишь курьеру.\nЖми 👇\n{link}\nА после заказа возьми свою ссылку — тоже дари друзьям подарок и получай 50% с их первого заказа баллами 😉';
 let REF = '';
 try {
   const q = (new URLSearchParams(location.search).get('ref') || '').toUpperCase();
@@ -367,6 +367,34 @@ try {
   if (!REF_RE.test(REF)) REF = ''
 } catch (e) {}
 let BONUS = { balance: 0, pct: 10, use: true };
+// «Подарок от друга»: who invited and what a new customer gets on the first order (store_settings.referral.friend_*).
+// The server decides (private.apply_friend_gift); here it is only shown. eligible: null = phone not typed yet.
+let GIFT = null, giftSeq = 0;
+setTimeout(() => loadGift(), 0);
+async function loadGift(phone) {
+  if (!REF) return;
+  const seq = ++giftSeq;   // the phone may change while a check is on its way: only the latest answer counts
+  try {
+    const r = await PIVKA_DB.client().rpc('ref_gift_info', { p_code: REF, p_phone: phone || null });
+    if (seq !== giftSeq) return;
+    GIFT = r.error || !r.data ? null : r.data
+  } catch (e) {}
+  renderGiftBanner()
+}
+const giftName = () => GIFT?.gift ? (GIFT.gift[lang()] || GIFT.gift.ru) : '';
+const giftOn = () => !!GIFT && GIFT.eligible !== false;
+const giftApplies = () => giftOn() && payGoods() >= Number(GIFT.min || 0);
+function renderGiftBanner() {
+  const el = document.getElementById('giftBanner');
+  if (!el) return;
+  el.hidden = !giftOn();
+  if (el.hidden) return;
+  el.querySelector('b').textContent = '🎁 ' + tr(GIFT.name ? 'Тебя пригласил {name} — «Пивка для рывка» дарит тебе бесплатную доставку + {gift} к первому заказу от {min} ₾' : 'Тебя пригласил друг — «Пивка для рывка» дарит тебе бесплатную доставку + {gift} к первому заказу от {min} ₾')
+    .replace('{name}', GIFT.name || '').replace('{gift}', giftName()).replace('{min}', GIFT.min);
+  // came to order, not to invite: the «раздай свою ссылку» banner waits until after the first order
+  const rb = document.getElementById('refBanner');
+  if (rb) rb.style.display = 'none'
+}
 // Demo mode for recording promo videos (?demo=ryvok, kept for the tab): 50 points on any phone, and «Подтвердить
 // заказ» shows the success screen without creating anything — no order, no bots, no suppliers, no courier.
 let DEMO = false;
@@ -388,6 +416,7 @@ async function loadBonus() {
     if (!r.error && r.data) BONUS = { ...BONUS, balance: Number(r.data.balance) || 0, pct: Number(r.data.spend_percent) || 10 }
   } catch (e) {}
   renderBonus();
+  if (REF) await loadGift(ph.replace(/\D/g, '').length >= 9 ? ph : null);
   refreshDeliveryQuote()
 }
 function renderBonus() {
@@ -1382,6 +1411,7 @@ function applyDeliveryMode() {
 
 function currentDeliveryFee() {
   if (fulfillment !== 'delivery' || !coZone.value) return 0;
+  if (giftApplies() && GIFT.free_delivery) return 0;
   if (deliveryQuoteState.fee !== null) return deliveryQuoteState.fee;
   const opt = coZone.options[coZone.selectedIndex];
   return deliveryQuoteState.mode === 'CHARGE' && opt?.value ? deliveryRule().fee : 0
@@ -1399,7 +1429,9 @@ function updateCheckoutTotal() {
   checkoutNotice.style.display = fulfillment === 'delivery' ? 'block' : 'none';
   const min = opt?.dataset?.min && Number(opt.dataset.min) ? ' · Минимальный заказ ' + money(opt.dataset.min) : '';
   const feeText = deliveryQuoteState.reason === 'FREE_FROM' ? 'Доставка бесплатно — заказ от ' + deliveryRule().free + ' ₾' : deliveryQuoteState.reason === 'ZONE' && fee > 0 ? 'Доставка: ' + money(fee) + ' · от ' + deliveryRule().free + ' ₾ — бесплатно' : mode === 'HIDDEN' ? '' : mode === 'FREE' ? 'Доставка бесплатно' : 'Доставка: ' + money(fee);
-  checkoutNotice.textContent = fulfillment === 'delivery' ? (coZone.value ? (feeText + min).replace(/^ · /, '') || 'Доставка' : 'Выбери зону доставки') : 'Самовывоз — без платы за доставку'
+  checkoutNotice.textContent = fulfillment === 'delivery' ? (coZone.value ? (feeText + min).replace(/^ · /, '') || 'Доставка' : 'Выбери зону доставки') : 'Самовывоз — без платы за доставку';
+  if (giftOn()) checkoutNotice.textContent = '🎁 ' + (giftApplies() ? tr('Подарок от друга: бесплатная доставка + {gift}').replace('{gift}', giftName())
+    : tr('До подарка от друга: ещё {x}').replace('{x}', money(Number(GIFT.min) - payGoods()))) + (fulfillment === 'delivery' && !giftApplies() && coZone.value ? ' · ' + checkoutNotice.textContent : '')
 }
 
 function openCheckout(bundle = null) {
@@ -1439,7 +1471,7 @@ function openCheckout(bundle = null) {
   openSheet('checkoutOverlay')
 }
 function showDemoSuccess(r) {
-  checkoutBody.innerHTML = `<div class="success"><div class="big">🍻</div><h2>Рывок принят!</h2><p class="muted">Заказ №${r.order_number}<br>${Number(r.bonus_used) > 0 ? '💎 ' + esc(tr('Баллами')) + ': −' + money(r.bonus_used) + '<br>' : ''}Сумма: ${money(r.total)}</p><button class="skip" onclick="location.reload()">Готово</button></div>`
+  checkoutBody.innerHTML = `<div class="success"><div class="big">🍻</div><h2>Рывок принят!</h2><p class="muted">Заказ №${r.order_number}<br>${Number(r.bonus_used) > 0 ? '💎 ' + esc(tr('Баллами')) + ': −' + money(r.bonus_used) + '<br>' : ''}${r.friend_gift ? '🎁 ' + esc(tr('Подарок от друга добавлен в заказ')) + '<br>' : ''}Сумма: ${money(r.total)}</p><button class="skip" onclick="location.reload()">Готово</button></div>`
 }
 
 async function submitCheckout() {
@@ -1533,7 +1565,7 @@ async function submitCheckout() {
     } catch (e) {}
     // The order has its own page (status, «Рывок» game, chat with us) — no WhatsApp, no phone number.
     const orderUrl = r.order_id ? new URL('order.html?o=' + r.order_id, location.href.split(/[?#]/)[0].replace(/[^/]*$/, '')).href : '';
-    checkoutBody.innerHTML = `<div class="success"><div class="big">🍻</div><h2>Рывок принят!</h2><p class="muted">Заказ №${r.order_number}<br>${Number(r.bonus_used) > 0 ? '💎 ' + esc(tr('Баллами')) + ': −' + money(r.bonus_used) + '<br>' : ''}${r.scheduled_for ? '🕐 ' + esc(tr('Предзаказ — привезём к')) + ' ' + esc(preLabel(new Date(r.scheduled_for))) + '<br>' : ''}Сумма: ${money(r.total)}</p>${orderUrl ? `<a class="yellow checkout" style="display:block;text-decoration:none" href="${orderUrl}">Мой заказ и статус →</a>${['transfer', 'ru_card'].includes(coPayment.value) ? '<button type="button" class="yellow checkout" data-chat style="display:block;width:100%;border:0;cursor:pointer">📷 Отправить скриншот перевода</button>' : ''}<button type="button" class="skip" data-chat>💬 Вопрос по заказу? Напишите нам в чат</button>` : ''}<button class="skip" onclick="try{sessionStorage.setItem('pivka_intro_short','1')}catch(e){};location.reload()">Готово</button></div>`;
+    checkoutBody.innerHTML = `<div class="success"><div class="big">🍻</div><h2>Рывок принят!</h2><p class="muted">Заказ №${r.order_number}<br>${Number(r.bonus_used) > 0 ? '💎 ' + esc(tr('Баллами')) + ': −' + money(r.bonus_used) + '<br>' : ''}${r.friend_gift ? '🎁 ' + esc(tr('Подарок от друга добавлен в заказ')) + '<br>' : ''}${r.scheduled_for ? '🕐 ' + esc(tr('Предзаказ — привезём к')) + ' ' + esc(preLabel(new Date(r.scheduled_for))) + '<br>' : ''}Сумма: ${money(r.total)}</p>${orderUrl ? `<a class="yellow checkout" style="display:block;text-decoration:none" href="${orderUrl}">Мой заказ и статус →</a>${['transfer', 'ru_card'].includes(coPayment.value) ? '<button type="button" class="yellow checkout" data-chat style="display:block;width:100%;border:0;cursor:pointer">📷 Отправить скриншот перевода</button>' : ''}<button type="button" class="skip" data-chat>💬 Вопрос по заказу? Напишите нам в чат</button>` : ''}<button class="skip" onclick="try{sessionStorage.setItem('pivka_intro_short','1')}catch(e){};location.reload()">Готово</button></div>`;
     // The same status card as on the home page.
     checkoutBody.querySelector('.success').insertAdjacentHTML('beforeend', '<div id="orderTrack" class="trackCard" hidden></div>');
     if (r.order_id) referralCard(r.order_id).then(h => { const s = checkoutBody.querySelector('.success'); if (h && s) s.insertAdjacentHTML('beforeend', h) });
@@ -1789,6 +1821,7 @@ const I18N = {
 };
 
 function setLang(lang) {
+  setTimeout(() => { if (typeof renderGiftBanner === 'function') renderGiftBanner() }, 0);
   try {
     localStorage.setItem('pivka_lang', lang)
   } catch (e) {}

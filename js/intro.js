@@ -64,6 +64,8 @@
   // Full credits on every visit. Only the reload right after a placed order is short (store.js sets the flag).
   let short = false;
   try { short = sessionStorage.getItem('pivka_intro_short') === '1'; sessionStorage.removeItem('pivka_intro_short'); } catch (e) {}
+  // A link we hand out (?s=ig_bio…) or a friend's link (?ref=): the visitor came to order — only the logo, no credits.
+  if (/[?&](s|ref)=/.test(location.search)) short = true;
   const REVEAL_MS = reduced ? 250 : 800;
   root.style.setProperty('--intro-reveal', REVEAL_MS + 'ms');
   if (short) root.classList.add('intro-short');
