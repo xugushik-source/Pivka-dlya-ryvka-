@@ -855,6 +855,10 @@ function renderBundles() {
   applyNight();
   // At night Рывки with beer or food are not sold: hide them instead of a wall of disabled cards.
   const shown = bundleCatalog.filter(b => b.unavailable_reason !== 'CLOSED_NOW');
+  // No Рывки switched on at all (owner, 2026-10-23): the whole section goes, not an empty shelf.
+  const sec = document.getElementById('bundlesSection');
+  if (sec) sec.hidden = !bundleCatalog.length;
+  if (!bundleCatalog.length) return;
   if (!shown.length) {
     bundles.innerHTML = '<div class="empty">' + (bundleCatalog.length ? tr(stockNight() ? '🌙 Ночью готовые рывки не собираем — возьми крепкое и закуску в «Собрать свой». Рывки — с 10:00, с пивом и пиццей — с 12:00.' : '☀️ Рывки с пивом и пиццей — с 12:00. А пока собери свой в «Собрать свой».') : 'Готовые рывки скоро появятся') + '</div>';
     return
@@ -874,7 +878,7 @@ function renderBundles() {
 }
 
 function goBundles() {
-  document.getElementById('bundlesSection').scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' })
+  (document.getElementById('bundlesSection')?.hidden ? document.getElementById('buildSection') : document.getElementById('bundlesSection'))?.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' })
 }
 
 function goBuild() {
