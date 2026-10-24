@@ -562,16 +562,20 @@ function supplierDayText(st: any) {
     st.debt > 0 ? `<b>Итого к оплате: ${money(st.due)}</b>` : null,
     "",
     st.status === "PAID" ? `💸 Оплачено ${hm(st.paid_at)}`
-      : st.supplier_status === "AGREED" ? "✅ Вы подтвердили — всё сходится. Оплата утром."
+      : st.supplier_status === "AGREED" ? "✅ Вы подтвердили — всё сходится.\nКогда получите деньги, нажмите «Получил» 👇"
       : st.supplier_status === "DISPUTED" ? (st.supplier_note ? `❌ Вы написали: «${esc(st.supplier_note)}». Владелец разберётся.` : "❌ Напишите одним сообщением, что не сходится 👇")
-      : "Проверьте, пожалуйста: всё сходится?",
+      : "Проверьте, пожалуйста: всё сходится? Когда получите деньги, нажмите «Получил».",
     stockHeld(st.stock || []) || null,
   ].filter((l) => l !== null).join("\n").replace(/\n{3,}/g, "\n\n");
 }
 const dcb = (act: string, id: string) => `d|${act}|${id}`;
+// Owner, 24.10: the supplier marks the payment himself — «Получил деньги» (cash / transfer).
 const supplierDayKeyboard = (st: any) => ({
-  inline_keyboard: st.status === "OPEN" && st.supplier_status === "SENT"
-    ? [[{ text: "✅ Сходится", callback_data: dcb("ok", st.id) }, { text: "❌ Не сходится", callback_data: dcb("bad", st.id) }]] : [],
+  inline_keyboard: st.status !== "OPEN" ? [] : [
+    ...(st.supplier_status === "SENT" ? [[{ text: "✅ Сходится", callback_data: dcb("ok", st.id) }, { text: "❌ Не сходится", callback_data: dcb("bad", st.id) }]] : []),
+    ...(st.due > 0 ? [[{ text: `💵 Получил наличными ${money(st.due)}`, callback_data: dcb("got_cash", st.id) }],
+      [{ text: `💳 Получил переводом ${money(st.due)}`, callback_data: dcb("got_transfer", st.id) }]] : []),
+  ],
 });
 
 function ownerDayText(st: any, linked: boolean) {
@@ -586,11 +590,13 @@ function ownerDayText(st: any, linked: boolean) {
     st.debt > 0 ? `Долг за прошлые дни: ${money(st.debt)}` : null,
     `<b>К оплате: ${money(st.due)}</b>`,
     `Поставщик: ${reply}`,
-    st.status === "PAID" ? `💸 Оплачено ${time(st.paid_at)}` : null,
+    st.status === "PAID" ? `💸 Поставщик подтвердил: деньги получил ${time(st.paid_at)}`
+      : linked ? "⏳ Отдайте деньги — поставщик сам нажмёт «Получил»." : null,
   ].filter((l) => l !== null).join("\n");
 }
-const ownerDayKeyboard = (st: any) => ({
-  inline_keyboard: st.status === "OPEN" && st.due > 0
+// The owner marks a payment only for a supplier who is not in the bot (otherwise the supplier confirms).
+const ownerDayKeyboard = (st: any, linked = false) => ({
+  inline_keyboard: !linked && st.status === "OPEN" && st.due > 0
     ? [[{ text: `💵 Оплачено налом ${money(st.due)}`, callback_data: dcb("paid_cash", st.id) }],
        [{ text: `💳 Оплачено безналом ${money(st.due)}`, callback_data: dcb("paid_transfer", st.id) }]]
     : [],
@@ -601,7 +607,7 @@ async function refreshDay(cfg: Cfg, id: string) {
   const tgm = st.tg || {};
   const linked = !!(await chatOf("SUPPLIER", st.supplier_id));
   for (const [chat, msg] of (tgm.owner || []) as [number, number][]) {
-    await quiet(tg(cfg, "editMessageText", { chat_id: chat, message_id: msg, text: ownerDayText(st, linked), parse_mode: "HTML", reply_markup: ownerDayKeyboard(st) }));
+    await quiet(tg(cfg, "editMessageText", { chat_id: chat, message_id: msg, text: ownerDayText(st, linked), parse_mode: "HTML", reply_markup: ownerDayKeyboard(st, linked) }));
   }
   if (tgm.supplier) {
     await quiet(tg(cfg, "editMessageText", { chat_id: tgm.supplier[0], message_id: tgm.supplier[1], text: supplierDayText(st), parse_mode: "HTML", reply_markup: supplierDayKeyboard(st) }));
@@ -625,7 +631,7 @@ async function onSupplierDay(cfg: Cfg, ids: string[]) {
     }
     for (const l of await linksOf("OWNER")) {
       try {
-        const m = await tg(cfg, "sendMessage", { chat_id: l.chat_id, text: ownerDayText(st, !!chat), parse_mode: "HTML", reply_markup: ownerDayKeyboard(st) });
+        const m = await tg(cfg, "sendMessage", { chat_id: l.chat_id, text: ownerDayText(st, !!chat), parse_mode: "HTML", reply_markup: ownerDayKeyboard(st, !!chat) });
         tgm.owner.push([l.chat_id, m.message_id]);
       } catch (e) { console.error(e); }
     }
@@ -660,8 +666,15 @@ async function onDayCallback(cfg: Cfg, q: any, act: string, id: string) {
   const { data: r, error } = await db.rpc("tg_supplier_day", { p_chat: chat, p_settlement: id, p_action: act });
   if (error) { console.error(error); return answer("Не получилось: " + error.message, true); }
   if (r?.error === "already") { await refreshDay(cfg, id); return answer("Уже оплачено"); }
+  if (r?.error === "supplier_confirms") { await refreshDay(cfg, id); return answer("Оплату отмечает поставщик — кнопкой «Получил» у себя в чате.", true); }
   if (r?.error) return answer(r.error === "forbidden" ? "Эта кнопка не для вас." : "Не получилось", true);
   if (act.startsWith("paid")) { await onSupplierPaid(cfg, (await loadSettlement(id)).supplier_id, Number(r.amount), r.method || ""); return answer("Отмечено: оплачено"); }
+  if (act.startsWith("got")) {
+    const st = await loadSettlement(id);
+    await onSupplierPaid(cfg, st.supplier_id, Number(r.amount), r.method || "");
+    await sendToKind(cfg, "OWNER", `💸 <b>${esc(st.suppliers?.name || "Поставщик")}</b> подтвердил: получил ${money(Number(r.amount))} · ${PAYM[r.method] || ""}`);
+    return answer("Спасибо! Отмечено: деньги получены");
+  }
   await refreshDay(cfg, id);
   return answer(act === "ok" ? "Спасибо!" : "Напишите, что не так");
 }
