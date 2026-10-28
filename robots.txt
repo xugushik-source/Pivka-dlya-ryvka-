@@ -1,10 +1,8 @@
 # Пивка для рывка — https://pivkadlaryvka.ge/
-# Индексируется только витрина. Служебные разделы закрыты от обхода.
-# Страницы заказа, изменения заказа и игры уже помечены <meta name="robots" content="noindex">,
+# Индексируется только витрина. Служебные папки закрыты от обхода.
+# Админка, курьер, заказ, изменение заказа и игра помечены <meta name="robots" content="noindex">,
 # поэтому они здесь открыты: иначе поисковик не увидит этот запрет.
 User-agent: *
-Disallow: /admin/
-Disallow: /courier/
 Disallow: /supabase/
 Disallow: /scripts/
 Disallow: /print/
