@@ -1,0 +1,14 @@
+# Пивка для рывка — https://pivkadlaryvka.ge/
+# Индексируется только витрина. Служебные разделы закрыты от обхода.
+# Страницы заказа, изменения заказа и игры уже помечены <meta name="robots" content="noindex">,
+# поэтому они здесь открыты: иначе поисковик не увидит этот запрет.
+User-agent: *
+Disallow: /admin/
+Disallow: /courier/
+Disallow: /supabase/
+Disallow: /scripts/
+Disallow: /print/
+Disallow: /promo/
+Allow: /
+
+Sitemap: https://pivkadlaryvka.ge/sitemap.xml
