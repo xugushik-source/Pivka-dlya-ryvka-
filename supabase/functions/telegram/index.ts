@@ -140,7 +140,7 @@ const offerText = (o: any) => {
   const n = (o.order_items || []).filter((i: any) => !i.is_gift).length;
   return `🆕 <b>Новый заказ №${o.order_number}</b> · ${hm(o.created_at)}\n📍 ${esc(o.service_cities?.name || "")}` +
     `${o.delivery_zones?.name ? " · " + esc(o.delivery_zones.name) : ""}\n🏠 ${esc(o.address_snapshot || "—")}\n` +
-    `${n} поз. · <b>${money(o.total)}</b>${o.from_stock ? "\n🏠 Со склада" : ""}${hasHotFood(o) ? "\n🍕 С горячей едой (~" + prepMinutes(o) + " мин)" : ""}\n\nКто возьмёт — звонит клиенту и подтверждает заказ.`;
+    `${n} поз. · <b>${money(o.total)}</b>${o.from_stock ? "\n🏠 Со склада" : ""}${hasHotFood(o) ? "\n🍕 С горячей едой (~" + prepMinutes(o) + " мин)" : ""}\n\nКто возьмёт — звонит клиенту и подтверждает заказ.${courierCall}`;
 };
 
 const HINT: Record<string, string> = {
@@ -150,9 +150,15 @@ const HINT: Record<string, string> = {
   PREPARING: "Выезжаете к клиенту — нажмите «🛵 Еду»: клиент увидит, что заказ едет.",
   OUT_FOR_DELIVERY: "Отдали заказ? Выберите, как клиент заплатил:",
 };
+// Owner, 04.11: every courier and supplier message ends with whom to call. Couriers and suppliers must not sort out
+// problems with the customer among themselves — any problem or doubt goes to the owner first.
+const OWNER_PHONE = "+995 591 24 40 75";
+const courierCall = `\n\n☎️ <b>Проблема с поставщиком или клиентом, что-то не готово или непонятно — сразу звоните Арутюну: ${OWNER_PHONE}</b>`;
+const supplierCall = `\n\n☎️ <b>Нет на месте кого-то из вас, чего-то нет или есть вопрос — звоните Арутюну: ${OWNER_PHONE}</b>`;
 const cardText = (o: any) =>
   `🛵 <b>Заказ №${o.order_number}</b> · ${time(o.created_at)}\n${orderBody(o)}\n\n<b>Статус:</b> ${statusLine(o)}${suppliersLine(o)}${foodLine(o)}${stockLine(o)}` +
-  ((o.from_stock && HINT[o.status + "_STOCK"]) || HINT[o.status] ? `\n\n${(o.from_stock && HINT[o.status + "_STOCK"]) || HINT[o.status]}` : "");
+  ((o.from_stock && HINT[o.status + "_STOCK"]) || HINT[o.status] ? `\n\n${(o.from_stock && HINT[o.status + "_STOCK"]) || HINT[o.status]}` : "") +
+  (["DELIVERED", "CANCELLED", "REFUNDED"].includes(o.status) ? "" : courierCall);
 
 const cb = (act: string, id: string, arg = "") => `c|${act}|${id}${arg ? "|" + arg : ""}`;
 // A courier group (courier + owner + bot): Telegram allows web_app buttons only in private chats, so there
@@ -309,7 +315,7 @@ function supplierText(o: any, supplierId: string) {
     `<b>К оплате вам: ${money(sum)}</b>`,
     g.missing_note ? `⚠️ Нет: ${esc(g.missing_note)}` : null,
     g.status === "READY" ? `✅ Готово ${hm(g.ready_at)}` : null,
-  ].filter((l) => l !== null).join("\n");
+  ].filter((l) => l !== null).join("\n") + (["DELIVERED", "CANCELLED", "REFUNDED"].includes(o.status) ? "" : supplierCall);
 }
 const scb = (act: string, id: string, arg = "") => `s|${act}|${id}${arg !== "" ? "|" + arg : ""}`;
 function supplierKeyboard(o: any, supplierId: string) {
