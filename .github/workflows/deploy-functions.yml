@@ -32,7 +32,7 @@ jobs:
           set -o pipefail
           # The error is also written as an annotation, so it can be read without opening the raw log.
           # voice-session checks the origin and its own limits; the browser calls it with the anon key only → no JWT check either.
-          if ! { supabase functions deploy telegram --project-ref "$PROJECT_REF" --no-verify-jwt --use-api --debug && supabase functions deploy voice-session --project-ref "$PROJECT_REF" --no-verify-jwt --use-api --debug; } 2>&1 | tee out.txt; then
+          if ! { supabase functions deploy telegram --project-ref "$PROJECT_REF" --no-verify-jwt --use-api --yes --debug && supabase functions deploy voice-session --project-ref "$PROJECT_REF" --no-verify-jwt --use-api --yes --debug; } 2>&1 | tee out.txt; then
             echo "::error title=Deploy failed::$(grep -v '^$' out.txt | tail -n 25 | sed 's/sbp_[A-Za-z0-9_]*/sbp_***/g' | sed ':a;N;$!ba;s/\n/%0A/g')"
             exit 1
           fi
