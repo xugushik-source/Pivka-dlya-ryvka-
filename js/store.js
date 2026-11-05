@@ -914,10 +914,12 @@ function applyNight() {
   });
   document.querySelectorAll('.nightNote').forEach(x => x.hidden = !on)
 }
-// Delivery rule for «now»: day 3 ₾ / free from 50 ₾, after 23:00 5 ₾ / free from 80 ₾ (numbers come from the server).
-function deliveryRule() {
+// Delivery rule for «now»: day fee = zone fee (city 4 ₾, Городок 6 ₾), after 23:00 + (night_fee − day_fee); free from 50/80 ₾ (numbers come from the server).
+function deliveryRule(zoneFee) {
   const d = NIGHT?.delivery || {}, n = inWin(tbilisiHM(), d.night_from || '23:00', d.night_to || '02:00');
-  return { fee: Number(n ? d.night_fee ?? 7 : d.day_fee ?? 3), free: Number(n ? d.night_free_from ?? 80 : d.day_free_from ?? 50) }
+  const day = Number(d.day_fee ?? 4), extra = Math.max(Number(d.night_fee ?? 7) - day, 0);
+  const base = zoneFee != null && zoneFee !== '' && !isNaN(Number(zoneFee)) ? Number(zoneFee) : day;
+  return { fee: base + (n ? extra : 0), free: Number(n ? d.night_free_from ?? 80 : d.day_free_from ?? 50) }
 }
 async function loadNight() {
   try {
@@ -1067,8 +1069,8 @@ function deliveryHint() {
   if (!checkoutFormAlive()) return '';
   if (deliveryQuoteState.mode === 'HIDDEN') return '';
   if (deliveryQuoteState.mode === 'FREE') return 'Доставка бесплатно';
-  const r = deliveryRule();
-  return orderBase() >= r.free ? 'Доставка бесплатно — заказ от ' + r.free + ' ₾' : 'Доставка ' + r.fee + ' ₾ · от ' + r.free + ' ₾ — бесплатно';
+  const zo = coZone?.options?.[coZone.selectedIndex], z = zo?.value ? zo.dataset.fee : null, r = deliveryRule(z);
+  return orderBase() >= r.free ? 'Доставка бесплатно — заказ от ' + r.free + ' ₾' : 'Доставка ' + (z == null ? 'от ' : '') + r.fee + ' ₾ · от ' + r.free + ' ₾ — бесплатно';
   const fees = [...coZone.options].map(o => Number(o.dataset.fee)).filter(n => !isNaN(n));
   return fees.length ? 'Доставка от ' + money(Math.min(...fees)) + ' · самовывоз бесплатно' : ''
 }
@@ -1409,7 +1411,7 @@ function applyDeliveryMode() {
   [...coZone.options].forEach(o => {
     if (!o.value) return;
     o.dataset.label = o.dataset.label || o.textContent.split(' · ')[0];
-    o.textContent = mode === 'HIDDEN' ? o.dataset.label : mode === 'FREE' ? o.dataset.label + ' · бесплатно' : o.dataset.label + ' · ' + money(deliveryRule().fee)
+    o.textContent = mode === 'HIDDEN' ? o.dataset.label : mode === 'FREE' ? o.dataset.label + ' · бесплатно' : o.dataset.label + ' · ' + money(deliveryRule(o.dataset.fee).fee)
   })
 }
 
@@ -1418,7 +1420,7 @@ function currentDeliveryFee() {
   if (giftApplies() && GIFT.free_delivery) return 0;
   if (deliveryQuoteState.fee !== null) return deliveryQuoteState.fee;
   const opt = coZone.options[coZone.selectedIndex];
-  return deliveryQuoteState.mode === 'CHARGE' && opt?.value ? deliveryRule().fee : 0
+  return deliveryQuoteState.mode === 'CHARGE' && opt?.value ? deliveryRule(opt.dataset.fee).fee : 0
 }
 
 function updateCheckoutTotal() {
